@@ -1,22 +1,23 @@
-import json
+from datetime import date as calendar_date
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
+
+from backend.transitous import TransitousError, get_nightways_for_dresden
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 INDEX_FILE = PROJECT_ROOT / "index.html"
 STYLE_FILE = PROJECT_ROOT / "style.css"
 SCRIPT_FILE = PROJECT_ROOT / "app.js"
-DATA_FILE = (
+REFERENCE_DATA_FILE = (
     PROJECT_ROOT
     / "data"
     / "nightways_dresden_2026-08-14.json"
 )
 
 SUPPORTED_ORIGIN = "Dresden"
-SUPPORTED_DATE = "2026-08-14"
 
 
 app = FastAPI(
@@ -51,27 +52,50 @@ def get_nightways(origin: str, date: str):
         == SUPPORTED_ORIGIN.casefold()
     )
 
-    is_supported_date = date == SUPPORTED_DATE
-
-
-    if not is_supported_origin or not is_supported_date:
+    if not is_supported_origin:
 
         raise HTTPException(
             status_code=400,
             detail={
                 "message": (
                     "This prototype currently supports only "
-                    "Dresden on 2026-08-14."
+                    "Dresden as the origin."
                 ),
-                "supported_origin": SUPPORTED_ORIGIN,
-                "supported_date": SUPPORTED_DATE
+                "supported_origin": SUPPORTED_ORIGIN
             }
         )
 
 
-    with DATA_FILE.open(
-        "r",
-        encoding="utf-8"
-    ) as data_file:
+    try:
 
-        return json.load(data_file)
+        travel_date = calendar_date.fromisoformat(date)
+
+        if travel_date.isoformat() != date:
+
+            raise ValueError
+
+    except ValueError as error:
+
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Date must use the YYYY-MM-DD format."
+            }
+        ) from error
+
+
+    try:
+
+        return get_nightways_for_dresden(
+            travel_date,
+            REFERENCE_DATA_FILE
+        )
+
+    except TransitousError as error:
+
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": str(error)
+            }
+        ) from error
