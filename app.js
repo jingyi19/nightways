@@ -1,8 +1,11 @@
-const DATA_FILE = "./data/nightways_dresden_2026-08-14.json";
+const API_ENDPOINT =
+    "/api/nightways";
 
 const destinationCount = document.getElementById("destination-count");
 const destinationList = document.getElementById("destination-list");
 const searchButton = document.getElementById("search-button");
+const originInput = document.getElementById("origin");
+const dateInput = document.getElementById("date");
 const modeFilterButtons = document.querySelectorAll(
     ".mode-filter-button"
 );
@@ -642,6 +645,17 @@ function ensureDestinationOpen(card, destination) {
 // LOAD NIGHTWAYS DATA
 // --------------------------------------------------
 
+function getNightwaysRequestUrl() {
+
+    const query = new URLSearchParams({
+        origin: originInput.value.trim(),
+        date: dateInput.value
+    });
+
+    return `${API_ENDPOINT}?${query}`;
+}
+
+
 async function loadNightwaysData(reloadData = true) {
 
     destinationCount.textContent =
@@ -662,7 +676,9 @@ async function loadNightwaysData(reloadData = true) {
         if (reloadData || !data) {
 
             const response =
-                await fetch(DATA_FILE);
+                await fetch(
+                    getNightwaysRequestUrl()
+                );
 
 
             if (!response.ok) {
