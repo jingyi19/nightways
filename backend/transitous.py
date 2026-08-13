@@ -29,7 +29,6 @@ EUROPEAN_COUNTRY_CODES = frozenset(
 
 DRESDEN_CENTER = (51.0504, 13.7373)
 DRESDEN_RADIUS_METRES = 8000
-DRESDEN_TIMEZONE = ZoneInfo("Europe/Berlin")
 
 DEPARTURE_START = time(18, 0)
 DEPARTURE_END = time(23, 59, 59)
@@ -100,6 +99,16 @@ class ResolvedOrigin:
     lat: float
     lon: float
     timezone: str
+
+
+DRESDEN_ORIGIN = ResolvedOrigin(
+    name="Dresden",
+    country="Germany",
+    country_code="DE",
+    lat=DRESDEN_CENTER[0],
+    lon=DRESDEN_CENTER[1],
+    timezone="Europe/Berlin",
+)
 
 
 def resolve_origin(city_name: str) -> ResolvedOrigin:
@@ -428,21 +437,44 @@ def get_nightways_for_dresden(
 
 def _request_dresden_departures(travel_date: date) -> dict:
 
+    return _request_departures(
+        DRESDEN_ORIGIN,
+        travel_date,
+        DRESDEN_RADIUS_METRES,
+    )
+
+
+def _request_departures(
+    origin: ResolvedOrigin,
+    travel_date: date,
+    radius_metres: int,
+) -> dict:
+
+    try:
+
+        origin_timezone = ZoneInfo(origin.timezone)
+
+    except ZoneInfoNotFoundError as error:
+
+        raise TransitousError(
+            f"Unknown origin timezone: {origin.timezone}."
+        ) from error
+
     local_start = datetime.combine(
         travel_date,
         DEPARTURE_START,
-        tzinfo=DRESDEN_TIMEZONE,
+        tzinfo=origin_timezone,
     )
 
     query = urlencode(
         {
-            "center": f"{DRESDEN_CENTER[0]},{DRESDEN_CENTER[1]}",
+            "center": f"{origin.lat},{origin.lon}",
             "time": local_start.isoformat(),
             "arriveBy": "false",
             "direction": "LATER",
             "window": 6 * 60 * 60 - 1,
             "mode": ",".join(MOTIS_MODES),
-            "radius": DRESDEN_RADIUS_METRES,
+            "radius": radius_metres,
             "exactRadius": "true",
             "fetchStops": "true",
             "withAlerts": "false",
