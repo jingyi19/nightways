@@ -79,7 +79,7 @@ main > section:first-of-type {
     box-shadow:
         0 18px 45px rgba(2, 12, 28, 0.28);
 
-    margin-bottom: 72px;
+    margin-bottom: 24px;
 }
 
 label {
@@ -139,6 +139,57 @@ button {
 button:hover {
     background: var(--navy-600);
     transform: translateY(-1px);
+}
+
+/* Transport mode filter */
+
+.mode-filter {
+    display: inline-flex;
+    gap: 4px;
+
+    padding: 4px;
+
+    background: rgba(255, 255, 255, 0.92);
+
+    border: 1px solid rgba(23, 58, 99, 0.12);
+    border-radius: 12px;
+
+    box-shadow:
+        0 8px 20px rgba(5, 20, 40, 0.08);
+}
+
+.mode-filter-button {
+    width: auto;
+    height: 38px;
+
+    padding: 0 18px;
+
+    background: transparent;
+    color: var(--navy-700);
+
+    border-radius: 9px;
+
+    font-size: 14px;
+
+    transform: none;
+}
+
+.mode-filter-button:hover {
+    background: var(--blue-100);
+    color: var(--navy-800);
+
+    transform: none;
+}
+
+.mode-filter-button.is-active,
+.mode-filter-button.is-active:hover {
+    background: var(--navy-700);
+    color: var(--white);
+}
+
+.mode-filter-button:focus-visible {
+    outline: 3px solid rgba(157, 185, 214, 0.65);
+    outline-offset: 2px;
 }
 
 /* Results */
@@ -347,12 +398,22 @@ button:hover {
         flex-direction: column;
         align-items: stretch;
 
-        margin-bottom: 55px;
+        margin-bottom: 24px;
     }
 
     input,
     button {
         width: 100%;
+    }
+
+    .mode-filter {
+        display: flex;
+        width: 100%;
+    }
+
+    .mode-filter-button {
+        flex: 1;
+        width: auto;
     }
 
     #destination-list {

@@ -3,6 +3,18 @@ const DATA_FILE = "./data/nightways_dresden_2026-08-14.json";
 const destinationCount = document.getElementById("destination-count");
 const destinationList = document.getElementById("destination-list");
 const searchButton = document.getElementById("search-button");
+const modeFilterButtons = document.querySelectorAll(
+    ".mode-filter-button"
+);
+
+const TRAIN_SERVICE_MODES = new Set([
+    "TRAIN",
+    "LONG_DISTANCE",
+    "REGIONAL_RAIL"
+]);
+
+let activeMode = "ALL";
+let nightwaysData = null;
 
 
 // --------------------------------------------------
@@ -222,6 +234,108 @@ const destinationMarkers =
 function formatTime(dateString) {
 
     return dateString.slice(11, 16);
+}
+
+
+// --------------------------------------------------
+// TRANSPORT MODE FILTERING
+// --------------------------------------------------
+
+function serviceMatchesMode(service, mode) {
+
+    if (mode === "ALL") {
+        return true;
+    }
+
+    if (mode === "COACH") {
+        return service.mode === "COACH";
+    }
+
+    return TRAIN_SERVICE_MODES.has(
+        service.mode
+    );
+}
+
+
+function getDestinationForMode(destination) {
+
+    if (activeMode === "ALL") {
+        return destination;
+    }
+
+    const services =
+        destination.services.filter(
+            service => serviceMatchesMode(
+                service,
+                activeMode
+            )
+        );
+
+
+    if (services.length === 0) {
+        return null;
+    }
+
+
+    let earliestArrival =
+        destination.earliest_arrival;
+
+    let earliestTime = Infinity;
+
+    const stationKeys = new Set();
+
+
+    for (const service of services) {
+
+        for (const stop of service.stops) {
+
+            const arrivalTime =
+                new Date(stop.arrival).getTime();
+
+            if (arrivalTime < earliestTime) {
+
+                earliestTime = arrivalTime;
+                earliestArrival = stop.arrival;
+            }
+
+            stationKeys.add(
+                JSON.stringify([
+                    stop.station,
+                    stop.lat,
+                    stop.lon
+                ])
+            );
+        }
+    }
+
+
+    return {
+        ...destination,
+        earliest_arrival: earliestArrival,
+        service_count: services.length,
+        station_count: stationKeys.size,
+        services
+    };
+}
+
+
+function updateModeFilterButtons() {
+
+    for (const button of modeFilterButtons) {
+
+        const isActive =
+            button.dataset.mode === activeMode;
+
+        button.classList.toggle(
+            "is-active",
+            isActive
+        );
+
+        button.setAttribute(
+            "aria-pressed",
+            String(isActive)
+        );
+    }
 }
 
 
@@ -528,7 +642,7 @@ function ensureDestinationOpen(card, destination) {
 // LOAD NIGHTWAYS DATA
 // --------------------------------------------------
 
-async function loadNightwaysData() {
+async function loadNightwaysData(reloadData = true) {
 
     destinationCount.textContent =
         "Loading...";
@@ -542,24 +656,39 @@ async function loadNightwaysData() {
 
     try {
 
-        const response =
-            await fetch(DATA_FILE);
+        let data = nightwaysData;
 
 
-        if (!response.ok) {
+        if (reloadData || !data) {
 
-            throw new Error(
-                `Could not load data: ${response.status}`
-            );
+            const response =
+                await fetch(DATA_FILE);
+
+
+            if (!response.ok) {
+
+                throw new Error(
+                    `Could not load data: ${response.status}`
+                );
+            }
+
+
+            data = await response.json();
+
+            nightwaysData = data;
         }
 
 
-        const data =
-            await response.json();
+        const visibleDestinations =
+            data.destinations
+                .map(getDestinationForMode)
+                .filter(destination =>
+                    destination !== null
+                );
 
 
         destinationCount.textContent =
-            `${data.destination_count} direct overnight destinations`;
+            `${visibleDestinations.length} direct overnight destinations`;
 
 
         const mapBounds =
@@ -570,7 +699,7 @@ async function loadNightwaysData() {
 
         for (
             const destination
-            of data.destinations
+            of visibleDestinations
         ) {
 
             // ----------------------------------
@@ -828,12 +957,38 @@ async function loadNightwaysData() {
 
 searchButton.addEventListener(
     "click",
-    loadNightwaysData
+    () => {
+
+        loadNightwaysData(true);
+    }
 );
+
+
+// --------------------------------------------------
+// MODE FILTER BUTTONS
+// --------------------------------------------------
+
+for (const button of modeFilterButtons) {
+
+    button.addEventListener(
+        "click",
+        () => {
+
+            activeMode =
+                button.dataset.mode;
+
+            updateModeFilterButtons();
+
+            loadNightwaysData(false);
+        }
+    );
+}
 
 
 // --------------------------------------------------
 // INITIAL LOAD
 // --------------------------------------------------
 
-loadNightwaysData();
+updateModeFilterButtons();
+
+loadNightwaysData(true);
