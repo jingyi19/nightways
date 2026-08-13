@@ -1,17 +1,30 @@
 import json
 import math
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from unicodedata import normalize as unicode_normalize
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
+TRANSITOUS_GEOCODE_URL = "https://api.transitous.org/api/v1/geocode"
 TRANSITOUS_API_URL = "https://api.transitous.org/api/v6/stoptimes"
 TRANSITOUS_USER_AGENT = (
     "Nightways/0.1 (contact: replace-me@example.invalid)"
+)
+
+# ISO 3166-1 alpha-2 codes accepted as European Nightways origins.
+# Keep this explicit: a place's IANA timezone does not define its continent.
+EUROPEAN_COUNTRY_CODES = frozenset(
+    """
+    AD AL AM AT AX AZ BA BE BG BY CH CY CZ DE DK EE ES FI FO FR
+    GB GE GG GI GR HR HU IE IM IS IT JE LI LT LU LV MC MD ME MK
+    MT NL NO PL PT RO RS RU SE SI SJ SK SM TR UA VA
+    """.split()
 )
 
 DRESDEN_CENTER = (51.0504, 13.7373)
@@ -61,6 +74,194 @@ TIMEZONE_COUNTRIES = {
 
 class TransitousError(RuntimeError):
     """Raised when Transitous cannot supply usable timetable data."""
+
+
+class OriginResolutionError(ValueError):
+    """Base class for city-name resolution errors."""
+
+
+class OriginNotFoundError(OriginResolutionError):
+    """Raised when no usable European city result is available."""
+
+
+class AmbiguousOriginError(OriginResolutionError):
+    """Raised when a city name has multiple plausible European matches."""
+
+    def __init__(self, city_name: str, candidates):
+        self.candidates = tuple(candidates)
+        super().__init__(f"Multiple European places match {city_name!r}.")
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedOrigin:
+    name: str
+    country: str
+    country_code: str
+    lat: float
+    lon: float
+    timezone: str
+
+
+def resolve_origin(city_name: str) -> ResolvedOrigin:
+    """Resolve one unambiguous European city using Transitous PLACE data."""
+
+    if not isinstance(city_name, str):
+        raise OriginResolutionError("City name must be text.")
+
+    query = " ".join(city_name.split())
+    if not query:
+        raise OriginResolutionError("City name cannot be empty.")
+
+    candidates = []
+    for match in _request_place_matches(query):
+        candidate = _origin_from_match(match)
+        if candidate is not None:
+            candidates.append((candidate, match))
+
+    if not candidates:
+        raise OriginNotFoundError(f"No European city found for {query!r}.")
+
+    normalized_query = _normalized_city_name(query)
+    exact_candidates = [
+        (candidate, match)
+        for candidate, match in candidates
+        if _normalized_city_name(candidate.name) == normalized_query
+    ]
+    plausible_candidates = exact_candidates or candidates
+
+    if len(exact_candidates) > 1:
+        administrative_matches = [
+            (candidate, match)
+            for candidate, match in exact_candidates
+            if _has_matching_administrative_area(match, normalized_query)
+        ]
+        if administrative_matches:
+            plausible_candidates = administrative_matches
+
+    if len(plausible_candidates) > 1:
+        raise AmbiguousOriginError(
+            query,
+            [candidate for candidate, _ in plausible_candidates],
+        )
+
+    return plausible_candidates[0][0]
+
+
+def _request_place_matches(city_name: str) -> list[dict]:
+    query = urlencode(
+        {
+            "text": city_name,
+            "type": "PLACE",
+            "language": "en",
+            "numResults": 10,
+        }
+    )
+    request = Request(
+        f"{TRANSITOUS_GEOCODE_URL}?{query}",
+        headers={
+            "Accept": "application/json",
+            "User-Agent": TRANSITOUS_USER_AGENT,
+        },
+    )
+
+    try:
+        with urlopen(request, timeout=60) as response:
+            matches = json.load(response)
+    except HTTPError as error:
+        raise TransitousError(
+            "Transitous geocoding returned "
+            f"HTTP {error.code}. Please try again later."
+        ) from error
+    except (URLError, TimeoutError) as error:
+        raise TransitousError(
+            "Could not reach Transitous geocoding. Please try again later."
+        ) from error
+    except (OSError, json.JSONDecodeError) as error:
+        raise TransitousError(
+            "Transitous geocoding returned an unreadable response."
+        ) from error
+
+    if not isinstance(matches, list):
+        raise TransitousError(
+            "Transitous geocoding returned an unreadable response."
+        )
+
+    return matches
+
+
+def _origin_from_match(match: dict) -> ResolvedOrigin | None:
+    if not isinstance(match, dict) or match.get("type") != "PLACE":
+        return None
+
+    name = match.get("name")
+    country_code = match.get("country")
+    timezone = match.get("tz")
+    lat = match.get("lat")
+    lon = match.get("lon")
+
+    if not all(
+        isinstance(value, str) and value.strip()
+        for value in (name, country_code, timezone)
+    ):
+        return None
+
+    country_code = country_code.strip().upper()
+    if country_code not in EUROPEAN_COUNTRY_CODES:
+        return None
+
+    if (
+        isinstance(lat, bool)
+        or isinstance(lon, bool)
+        or not isinstance(lat, (int, float))
+        or not isinstance(lon, (int, float))
+        or not math.isfinite(lat)
+        or not math.isfinite(lon)
+        or not -90 <= lat <= 90
+        or not -180 <= lon <= 180
+    ):
+        return None
+
+    country = country_code
+    for area in match.get("areas") or []:
+        if not isinstance(area, dict) or area.get("adminLevel") != 2:
+            continue
+
+        area_name = area.get("name")
+        if isinstance(area_name, str) and area_name.strip():
+            country = area_name.strip()
+            break
+
+    return ResolvedOrigin(
+        name=name.strip(),
+        country=country,
+        country_code=country_code,
+        lat=float(lat),
+        lon=float(lon),
+        timezone=timezone.strip(),
+    )
+
+
+def _normalized_city_name(city_name: str) -> str:
+    normalized = unicode_normalize("NFKC", city_name)
+    return " ".join(normalized.split()).casefold()
+
+
+def _has_matching_administrative_area(
+    match: dict,
+    normalized_city_name: str,
+) -> bool:
+    for area in match.get("areas") or []:
+        if not isinstance(area, dict):
+            continue
+
+        area_name = area.get("name")
+        if (
+            isinstance(area_name, str)
+            and _normalized_city_name(area_name) == normalized_city_name
+        ):
+            return True
+
+    return False
 
 
 class DestinationCatalog:
