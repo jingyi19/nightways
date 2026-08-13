@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Nightways</title>
+
+    <!-- Your own stylesheet -->
+    <link rel="stylesheet" href="style.css">
+
+    <!-- Leaflet map stylesheet -->
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    >
+</head>
+
+<body>
+
+    <main>
+        <h1>NIGHTWAYS</h1>
+
+        <p class="tagline">Nights on the way.</p>
+
+        <p class="question">
+            Where can you wake up tomorrow?
+        </p>
+
+        <section>
+            <label for="origin">From</label>
+
+            <input
+                id="origin"
+                type="text"
+                value="Dresden"
+            >
+
+            <label for="date">Date</label>
+
+            <input
+                id="date"
+                type="date"
+                value="2026-08-14"
+            >
+
+            <button id="search-button">
+                Explore tonight
+            </button>
+        </section>
+
+        <!-- Europe map -->
+        <div id="map"></div>
+
+        <section id="results">
+            <h2>Overnight destinations</h2>
+
+            <p id="destination-count">
+                Loading...
+            </p>
+
+            <div id="destination-list"></div>
+        </section>
+    </main>
+
+    <!-- Leaflet map JavaScript -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Your own JavaScript -->
+    <script src="app.js"></script>
+
+</body>
+
+</html>

@@ -1,0 +1,463 @@
+* {
+    box-sizing: border-box;
+}
+
+:root {
+    --navy-900: #071426;
+    --navy-800: #0d2340;
+    --navy-700: #173a63;
+    --navy-600: #245487;
+
+    --blue-300: #9db9d6;
+    --blue-200: #c8d9e8;
+    --blue-100: #dce8f3;
+    --ice: #f4f8fc;
+
+    --text-main: #102033;
+    --text-muted: #60738a;
+
+    --white: #ffffff;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: Arial, Helvetica, sans-serif;
+
+    background:
+        linear-gradient(
+            180deg,
+            var(--navy-900) 0%,
+            var(--navy-800) 38%,
+            var(--ice) 38%,
+            var(--ice) 100%
+        );
+
+    color: var(--text-main);
+}
+
+main {
+    width: min(1120px, 92%);
+    margin: 0 auto;
+    padding: 70px 0 90px;
+}
+
+/* Header */
+
+h1 {
+    margin: 0;
+    color: var(--white);
+    font-size: 46px;
+    letter-spacing: 5px;
+}
+
+.tagline {
+    margin: 10px 0 0;
+    color: var(--blue-200);
+    font-size: 17px;
+    font-style: italic;
+}
+
+.question {
+    margin: 10px 0 36px;
+    color: var(--blue-300);
+    font-size: 19px;
+}
+
+/* Search box */
+
+main > section:first-of-type {
+    background: rgba(255, 255, 255, 0.98);
+
+    padding: 22px;
+    border-radius: 16px;
+
+    display: flex;
+    align-items: end;
+    gap: 16px;
+
+    box-shadow:
+        0 18px 45px rgba(2, 12, 28, 0.28);
+
+    margin-bottom: 72px;
+}
+
+label {
+    color: var(--navy-700);
+    font-size: 13px;
+    font-weight: bold;
+}
+
+input {
+    height: 48px;
+
+    border: 1px solid #cbd8e6;
+    border-radius: 9px;
+
+    padding: 0 14px;
+
+    color: var(--text-main);
+    background: #fbfdff;
+
+    font-size: 16px;
+    outline: none;
+}
+
+input:focus {
+    border-color: var(--navy-600);
+
+    box-shadow:
+        0 0 0 3px rgba(36, 84, 135, 0.10);
+}
+
+#origin {
+    flex: 1;
+    min-width: 180px;
+}
+
+button {
+    height: 48px;
+
+    border: none;
+    border-radius: 9px;
+
+    padding: 0 24px;
+
+    background: var(--navy-700);
+    color: var(--white);
+
+    font-size: 15px;
+    font-weight: bold;
+
+    cursor: pointer;
+
+    transition:
+        background 0.2s ease,
+        transform 0.2s ease;
+}
+
+button:hover {
+    background: var(--navy-600);
+    transform: translateY(-1px);
+}
+
+/* Results */
+
+#results h2 {
+    color: var(--navy-900);
+    font-size: 29px;
+
+    margin-bottom: 6px;
+}
+
+#destination-count {
+    margin-top: 0;
+    margin-bottom: 28px;
+
+    color: var(--text-muted);
+}
+
+#destination-list {
+    display: grid;
+
+    grid-template-columns:
+        repeat(auto-fill, minmax(235px, 1fr));
+
+    gap: 18px;
+}
+
+/* Destination cards */
+
+.destination-card {
+    min-height: 180px;
+
+    padding: 22px;
+
+    background: var(--white);
+
+    border:
+        1px solid rgba(23, 58, 99, 0.12);
+
+    border-radius: 14px;
+
+    box-shadow:
+        0 4px 14px rgba(13, 35, 64, 0.05);
+
+    cursor: pointer;
+
+    transition:
+        transform 0.2s ease,
+        box-shadow 0.2s ease,
+        border-color 0.2s ease;
+}
+
+.destination-card:hover {
+    transform: translateY(-4px);
+
+    border-color:
+        rgba(23, 58, 99, 0.28);
+
+    box-shadow:
+        0 14px 30px rgba(13, 35, 64, 0.12);
+}
+
+.destination-card h3 {
+    margin: 0 0 5px;
+
+    color: var(--navy-800);
+    font-size: 21px;
+}
+
+.destination-card p {
+    margin: 10px 0;
+
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+.destination-card strong {
+    color: var(--navy-700);
+    font-size: 20px;
+}
+
+/* Expandable city header */
+
+.destination-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.expand-icon {
+    color: var(--navy-600);
+    font-size: 20px;
+}
+
+.destination-card.expanded {
+    grid-column: span 2;
+    min-height: auto;
+
+    border-color:
+        rgba(23, 58, 99, 0.3);
+}
+
+.destination-details {
+    margin-top: 20px;
+}
+
+.details-divider {
+    margin-bottom: 20px;
+
+    border-top:
+        1px solid var(--blue-100);
+}
+
+/* Services */
+
+.service-block {
+    padding: 16px 0;
+}
+
+.service-block + .service-block {
+    border-top:
+        1px solid #e5edf5;
+}
+
+.service-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    margin-bottom: 10px;
+}
+
+.service-header strong {
+    color: var(--navy-800);
+    font-size: 16px;
+}
+
+.service-header span {
+    padding: 5px 8px;
+
+    border-radius: 6px;
+
+    background: var(--blue-100);
+    color: var(--navy-700);
+
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.departure-info {
+    display: flex;
+    gap: 8px;
+
+    margin-bottom: 12px;
+
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+.departure-info span:first-child {
+    color: var(--navy-800);
+    font-weight: bold;
+}
+
+.route-line {
+    width: 2px;
+    height: 14px;
+
+    margin-left: 19px;
+
+    background: var(--blue-300);
+}
+
+.arrival-stop {
+    display: grid;
+    grid-template-columns: 55px 1fr;
+    gap: 10px;
+
+    padding: 5px 0;
+
+    font-size: 14px;
+}
+
+.arrival-time {
+    color: var(--navy-800);
+    font-weight: bold;
+}
+
+.station-name {
+    color: var(--text-muted);
+}
+
+/* Mobile */
+
+@media (max-width: 700px) {
+
+    main {
+        padding-top: 40px;
+    }
+
+    h1 {
+        font-size: 34px;
+    }
+
+    main > section:first-of-type {
+        flex-direction: column;
+        align-items: stretch;
+
+        margin-bottom: 55px;
+    }
+
+    input,
+    button {
+        width: 100%;
+    }
+
+    #destination-list {
+        grid-template-columns: 1fr;
+    }
+
+    .destination-card.expanded {
+        grid-column: span 1;
+    }
+}
+
+/* Nightways — subtle night-rail atmosphere */
+
+body {
+  background:
+    radial-gradient(
+      ellipse at 72% 8%,
+      rgba(90, 150, 220, 0.12) 0%,
+      rgba(35, 75, 130, 0.05) 28%,
+      transparent 55%
+    ),
+    linear-gradient(
+      180deg,
+      #071426 0%,
+      #0b1c33 260px,
+      #eef4fa 560px
+    );
+}
+
+/* faint station-light line */
+body::before {
+  content: "";
+  position: fixed;
+  top: 215px;
+  left: 0;
+  width: 100%;
+  height: 1px;
+
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(140, 195, 255, 0.08) 15%,
+    rgba(170, 215, 255, 0.35) 50%,
+    rgba(140, 195, 255, 0.08) 85%,
+    transparent 100%
+  );
+
+  box-shadow:
+    0 0 18px rgba(105, 170, 240, 0.16),
+    0 0 35px rgba(105, 170, 240, 0.07);
+
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Nightways map */
+
+#map {
+  width: 100%;
+  height: 440px;
+
+  margin: 28px 0 36px;
+
+  border-radius: 20px;
+  overflow: hidden;
+
+  box-shadow:
+    0 16px 40px rgba(5, 20, 40, 0.12);
+}
+
+/* Nightways origin pin */
+
+.origin-pin {
+    width: 22px;
+    height: 22px;
+
+    background: #d94a5a;
+
+    border: 2px solid #a72f3d;
+
+    border-radius:
+        50% 50% 50% 0;
+
+    transform: rotate(-45deg);
+
+    box-shadow:
+        0 3px 8px rgba(100, 20, 35, 0.28);
+
+    position: relative;
+}
+
+
+.origin-pin-center {
+    width: 7px;
+    height: 7px;
+
+    background: #ffffff;
+
+    border-radius: 50%;
+
+    position: absolute;
+
+    top: 50%;
+    left: 50%;
+
+    transform:
+        translate(-50%, -50%);
+}

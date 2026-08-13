@@ -1,0 +1,1726 @@
+{
+  "origin": "Dresden",
+  "date": "2026-08-14",
+  "destination_count": 62,
+  "destinations": [
+    {
+      "city": "Essen",
+      "country": "Germany",
+      "earliest_arrival": "2026-08-15T05:00:00+02:00",
+      "service_count": 2,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_09:55_eu-flixbus_1304-11-0955082026-WZA#BNO-00",
+          "service": "FlixBus 1304",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T21:25:00+02:00",
+          "stops": [
+            {
+              "station": "Essen central train station (Freiheit)",
+              "arrival": "2026-08-15T05:00:00+02:00",
+              "lat": 51.450253,
+              "lon": 7.014609999999999
+            }
+          ]
+        },
+        {
+          "trip_id": "20260814_18:00_eu-flixbus_N23-5-1800082026-PRA#CGN-00",
+          "service": "FlixBus N23",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T22:15:00+02:00",
+          "stops": [
+            {
+              "station": "Essen central train station (Freiheit)",
+              "arrival": "2026-08-15T06:05:00+02:00",
+              "lat": 51.450253,
+              "lon": 7.014609999999999
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Metz",
+      "country": "France",
+      "earliest_arrival": "2026-08-15T05:00:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_03:55_eu-flixbus_N1306-3-0355082026-LBI#ETR-00",
+          "service": "FlixBus N1306",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T18:00:00+02:00",
+          "stops": [
+            {
+              "station": "Metz (central bus station)",
+              "arrival": "2026-08-15T05:00:00+02:00",
+              "lat": 49.110165,
+              "lon": 6.183766
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Karlsruhe",
+      "country": "Germany",
+      "earliest_arrival": "2026-08-15T05:04:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_20:11_de-DELFI_3338556168",
+          "service": "IC 458",
+          "operator": "DB Fernverkehr AG",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T21:02:00+02:00",
+          "stops": [
+            {
+              "station": "Karlsruhe Hauptbahnhof",
+              "arrival": "2026-08-15T05:04:00+02:00",
+              "lat": 48.99373200000001,
+              "lon": 8.401070999999998
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Dortmund",
+      "country": "Germany",
+      "earliest_arrival": "2026-08-15T05:05:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_18:00_eu-flixbus_N23-5-1800082026-PRA#CGN-00",
+          "service": "FlixBus N23",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T22:15:00+02:00",
+          "stops": [
+            {
+              "station": "Dortmund central bus station",
+              "arrival": "2026-08-15T05:05:00+02:00",
+              "lat": 51.51954,
+              "lon": 7.459387
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Studénka",
+      "country": "Czechia",
+      "earliest_arrival": "2026-08-15T05:05:00+02:00",
+      "service_count": 2,
+      "station_count": 2,
+      "services": [
+        {
+          "trip_id": "20260814_15:03_de-DELFI_3338221122",
+          "service": "DRF (235)",
+          "operator": "LEO Express",
+          "mode": "REGIONAL_RAIL",
+          "departure": "2026-08-14T22:30:00+02:00",
+          "stops": [
+            {
+              "station": "Studenka",
+              "arrival": "2026-08-15T05:06:00+02:00",
+              "lat": 49.707382,
+              "lon": 18.066619999999997
+            }
+          ]
+        },
+        {
+          "trip_id": "20260814_15:03_pl-Polish-Trains_PLK_LEO_2026_516260411",
+          "service": "LEO 1248",
+          "operator": "Leo Express",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T22:30:00+02:00",
+          "stops": [
+            {
+              "station": "Studénka",
+              "arrival": "2026-08-15T05:05:00+02:00",
+              "lat": 49.70756,
+              "lon": 18.066495999999997
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Frankfurt",
+      "country": "Germany",
+      "earliest_arrival": "2026-08-15T05:10:00+02:00",
+      "service_count": 2,
+      "station_count": 2,
+      "services": [
+        {
+          "trip_id": "20260814_11:20_eu-flixbus_N1305-1-1120082026-WZA#PQB-00",
+          "service": "FlixBus N1305",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T23:00:00+02:00",
+          "stops": [
+            {
+              "station": "Frankfurt central train station",
+              "arrival": "2026-08-15T05:10:00+02:00",
+              "lat": 50.104393,
+              "lon": 8.662577
+            },
+            {
+              "station": "Frankfurt Airport (P36, Terminal 1)",
+              "arrival": "2026-08-15T05:35:00+02:00",
+              "lat": 50.052679999999995,
+              "lon": 8.577490000000001
+            }
+          ]
+        },
+        {
+          "trip_id": "20260814_09:50_eu-flixbus_N1366-2-0950082026-MEX#LUX-00",
+          "service": "FlixBus N1366",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T23:59:00+02:00",
+          "stops": [
+            {
+              "station": "Frankfurt central train station",
+              "arrival": "2026-08-15T06:45:00+02:00",
+              "lat": 50.104393,
+              "lon": 8.662577
+            },
+            {
+              "station": "Frankfurt Airport (P36, Terminal 1)",
+              "arrival": "2026-08-15T07:25:00+02:00",
+              "lat": 50.052679999999995,
+              "lon": 8.577490000000001
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Würzburg",
+      "country": "Germany",
+      "earliest_arrival": "2026-08-15T05:15:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_09:50_eu-flixbus_N1366-2-0950082026-MEX#LUX-00",
+          "service": "FlixBus N1366",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T23:59:00+02:00",
+          "stops": [
+            {
+              "station": "Würzburg Main Station",
+              "arrival": "2026-08-15T05:15:00+02:00",
+              "lat": 49.801604999999995,
+              "lon": 9.934320999999997
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Ostrava",
+      "country": "Czechia",
+      "earliest_arrival": "2026-08-15T05:18:00+02:00",
+      "service_count": 2,
+      "station_count": 4,
+      "services": [
+        {
+          "trip_id": "20260814_15:03_de-DELFI_3338221122",
+          "service": "DRF (235)",
+          "operator": "LEO Express",
+          "mode": "REGIONAL_RAIL",
+          "departure": "2026-08-14T22:30:00+02:00",
+          "stops": [
+            {
+              "station": "Ostrava-Svinov",
+              "arrival": "2026-08-15T05:18:00+02:00",
+              "lat": 49.82139,
+              "lon": 18.210234
+            },
+            {
+              "station": "Ostrava hl.n.",
+              "arrival": "2026-08-15T05:25:00+02:00",
+              "lat": 49.852084999999995,
+              "lon": 18.267262
+            }
+          ]
+        },
+        {
+          "trip_id": "20260814_15:03_pl-Polish-Trains_PLK_LEO_2026_516260411",
+          "service": "LEO 1248",
+          "operator": "Leo Express",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T22:30:00+02:00",
+          "stops": [
+            {
+              "station": "Ostrava-Svinov",
+              "arrival": "2026-08-15T05:18:00+02:00",
+              "lat": 49.821130000000004,
+              "lon": 18.21007
+            },
+            {
+              "station": "Ostrava hlavní nádraží",
+              "arrival": "2026-08-15T05:27:00+02:00",
+              "lat": 49.851369999999996,
+              "lon": 18.266165
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Klagenfurt",
+      "country": "Austria",
+      "earliest_arrival": "2026-08-15T05:20:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_05:45_eu-flixbus_N160-4-0545082026-KHG#TRT-00",
+          "service": "FlixBus N160",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T19:50:00+02:00",
+          "stops": [
+            {
+              "station": "Klagenfurt central train station (bus station)",
+              "arrival": "2026-08-15T05:20:00+02:00",
+              "lat": 46.616337,
+              "lon": 14.311549000000001
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Bergisch Gladbach",
+      "country": "Germany",
+      "earliest_arrival": "2026-08-15T05:25:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_07:00_eu-flixbus_N20-4-0700082026-MEX#AMD-00",
+          "service": "FlixBus N20",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T22:00:00+02:00",
+          "stops": [
+            {
+              "station": "Bensberg bus station",
+              "arrival": "2026-08-15T05:25:00+02:00",
+              "lat": 50.96349,
+              "lon": 7.161854999999999
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Duisburg",
+      "country": "Germany",
+      "earliest_arrival": "2026-08-15T05:25:00+02:00",
+      "service_count": 2,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_09:55_eu-flixbus_1304-11-0955082026-WZA#BNO-00",
+          "service": "FlixBus 1304",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T21:25:00+02:00",
+          "stops": [
+            {
+              "station": "Duisburg central train station",
+              "arrival": "2026-08-15T05:25:00+02:00",
+              "lat": 51.42834500000001,
+              "lon": 6.7711950000000005
+            }
+          ]
+        },
+        {
+          "trip_id": "20260814_07:00_eu-flixbus_N20-4-0700082026-MEX#AMD-00",
+          "service": "FlixBus N20",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T22:00:00+02:00",
+          "stops": [
+            {
+              "station": "Duisburg central train station",
+              "arrival": "2026-08-15T07:25:00+02:00",
+              "lat": 51.42834500000001,
+              "lon": 6.7711950000000005
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Rostock",
+      "country": "Germany",
+      "earliest_arrival": "2026-08-15T05:25:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_18:30_eu-flixbus_N232-1-1830082026-PRA#KHG-00",
+          "service": "FlixBus N232",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T22:45:00+02:00",
+          "stops": [
+            {
+              "station": "Rostock Fährhafen (Ferry) Waypoint",
+              "arrival": "2026-08-15T05:25:00+02:00",
+              "lat": 54.149788,
+              "lon": 12.098564
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Baden-Baden",
+      "country": "Germany",
+      "earliest_arrival": "2026-08-15T05:26:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_20:11_de-DELFI_3338556168",
+          "service": "IC 458",
+          "operator": "DB Fernverkehr AG",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T21:02:00+02:00",
+          "stops": [
+            {
+              "station": "Baden-Baden",
+              "arrival": "2026-08-15T05:26:00+02:00",
+              "lat": 48.79047800000001,
+              "lon": 8.190417
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Bochum",
+      "country": "Germany",
+      "earliest_arrival": "2026-08-15T05:35:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_18:00_eu-flixbus_N23-5-1800082026-PRA#CGN-00",
+          "service": "FlixBus N23",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T22:15:00+02:00",
+          "stops": [
+            {
+              "station": "Bochum central station (Wittener Straße)",
+              "arrival": "2026-08-15T05:35:00+02:00",
+              "lat": 51.479310000000005,
+              "lon": 7.224849999999999
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Bohumín",
+      "country": "Czechia",
+      "earliest_arrival": "2026-08-15T05:35:00+02:00",
+      "service_count": 2,
+      "station_count": 2,
+      "services": [
+        {
+          "trip_id": "20260814_15:03_de-DELFI_3338221122",
+          "service": "DRF (235)",
+          "operator": "LEO Express",
+          "mode": "REGIONAL_RAIL",
+          "departure": "2026-08-14T22:30:00+02:00",
+          "stops": [
+            {
+              "station": "Bohumin",
+              "arrival": "2026-08-15T05:35:00+02:00",
+              "lat": 49.90073,
+              "lon": 18.359444
+            }
+          ]
+        },
+        {
+          "trip_id": "20260814_15:03_pl-Polish-Trains_PLK_LEO_2026_516260411",
+          "service": "LEO 1248",
+          "operator": "Leo Express",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T22:30:00+02:00",
+          "stops": [
+            {
+              "station": "Bohumín",
+              "arrival": "2026-08-15T05:35:00+02:00",
+              "lat": 49.900818,
+              "lon": 18.3597
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Offenburg",
+      "country": "Germany",
+      "earliest_arrival": "2026-08-15T05:46:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_20:11_de-DELFI_3338556168",
+          "service": "IC 458",
+          "operator": "DB Fernverkehr AG",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T21:02:00+02:00",
+          "stops": [
+            {
+              "station": "Offenburg Bahnhof",
+              "arrival": "2026-08-15T05:46:00+02:00",
+              "lat": 48.47649,
+              "lon": 7.946129000000001
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Břeclav",
+      "country": "Czechia",
+      "earliest_arrival": "2026-08-15T05:54:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_20:13_de-DELFI_3338596004",
+          "service": "27N",
+          "operator": "Österreichische Bundesbahnen",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T22:10:00+02:00",
+          "stops": [
+            {
+              "station": "Breclav(Gr)",
+              "arrival": "2026-08-15T05:54:00+02:00",
+              "lat": 48.712650000000004,
+              "lon": 16.86837
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Leverkusen",
+      "country": "Germany",
+      "earliest_arrival": "2026-08-15T05:55:00+02:00",
+      "service_count": 2,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_07:00_eu-flixbus_N20-4-0700082026-MEX#AMD-00",
+          "service": "FlixBus N20",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T22:00:00+02:00",
+          "stops": [
+            {
+              "station": "Leverkusen (Mitte station)",
+              "arrival": "2026-08-15T05:55:00+02:00",
+              "lat": 51.032368000000005,
+              "lon": 6.991052000000001
+            }
+          ]
+        },
+        {
+          "trip_id": "20260814_18:00_eu-flixbus_N23-5-1800082026-PRA#CGN-00",
+          "service": "FlixBus N23",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T22:15:00+02:00",
+          "stops": [
+            {
+              "station": "Leverkusen (Mitte station)",
+              "arrival": "2026-08-15T07:25:00+02:00",
+              "lat": 51.032368000000005,
+              "lon": 6.991052000000001
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Bratislava",
+      "country": "Slovakia",
+      "earliest_arrival": "2026-08-15T06:00:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_19:00_eu-flixbus_N260-6-1900082026-B#BUD-00",
+          "service": "FlixBus N260",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T23:50:00+02:00",
+          "stops": [
+            {
+              "station": "Bratislava (bus station Mlynské Nivy)",
+              "arrival": "2026-08-15T06:00:00+02:00",
+              "lat": 48.14679,
+              "lon": 17.128864000000004
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Petrovice u Karviné",
+      "country": "Czechia",
+      "earliest_arrival": "2026-08-15T06:08:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_15:03_pl-Polish-Trains_PLK_LEO_2026_516260411",
+          "service": "LEO 1248",
+          "operator": "Leo Express",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T22:30:00+02:00",
+          "stops": [
+            {
+              "station": "Petrovice u Karviné",
+              "arrival": "2026-08-15T06:08:00+02:00",
+              "lat": 49.894062,
+              "lon": 18.550083
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Budapest",
+      "country": "Hungary",
+      "earliest_arrival": "2026-08-15T06:10:00+02:00",
+      "service_count": 2,
+      "station_count": 2,
+      "services": [
+        {
+          "trip_id": "20260814_17:00_eu-flixbus_N260-2-1700082026-B#BUD-00",
+          "service": "FlixBus N260",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T21:50:00+02:00",
+          "stops": [
+            {
+              "station": "Budapest Kelenföld bus station",
+              "arrival": "2026-08-15T06:10:00+02:00",
+              "lat": 47.463596,
+              "lon": 19.022251
+            },
+            {
+              "station": "Budapest Népliget bus station",
+              "arrival": "2026-08-15T06:25:00+02:00",
+              "lat": 47.474304,
+              "lon": 19.098499999999998
+            }
+          ]
+        },
+        {
+          "trip_id": "20260814_19:00_eu-flixbus_N260-6-1900082026-B#BUD-00",
+          "service": "FlixBus N260",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T23:50:00+02:00",
+          "stops": [
+            {
+              "station": "Budapest Kelenföld bus station",
+              "arrival": "2026-08-15T08:30:00+02:00",
+              "lat": 47.463596,
+              "lon": 19.022251
+            },
+            {
+              "station": "Budapest Népliget bus station",
+              "arrival": "2026-08-15T08:50:00+02:00",
+              "lat": 47.474304,
+              "lon": 19.098499999999998
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Mönchengladbach",
+      "country": "Germany",
+      "earliest_arrival": "2026-08-15T06:10:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_09:55_eu-flixbus_1304-11-0955082026-WZA#BNO-00",
+          "service": "FlixBus 1304",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T21:25:00+02:00",
+          "stops": [
+            {
+              "station": "Mönchengladbach central train station",
+              "arrival": "2026-08-15T06:10:00+02:00",
+              "lat": 51.19824200000001,
+              "lon": 6.446858000000001
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Amsterdam",
+      "country": "Netherlands",
+      "earliest_arrival": "2026-08-15T06:20:00+02:00",
+      "service_count": 2,
+      "station_count": 2,
+      "services": [
+        {
+          "trip_id": "20260814_16:00_eu-flixbus_N67-3-1600082026-PRA#AMD-00",
+          "service": "FlixBus N67",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T20:15:00+02:00",
+          "stops": [
+            {
+              "station": "Amsterdam Schiphol Airport",
+              "arrival": "2026-08-15T06:20:00+02:00",
+              "lat": 52.306816,
+              "lon": 4.760319
+            },
+            {
+              "station": "Amsterdam Sloterdijk",
+              "arrival": "2026-08-15T06:45:00+02:00",
+              "lat": 52.389759999999995,
+              "lon": 4.838497
+            }
+          ]
+        },
+        {
+          "trip_id": "20260814_07:00_eu-flixbus_N20-4-0700082026-MEX#AMD-00",
+          "service": "FlixBus N20",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T22:00:00+02:00",
+          "stops": [
+            {
+              "station": "Amsterdam Sloterdijk",
+              "arrival": "2026-08-15T10:00:00+02:00",
+              "lat": 52.389759999999995,
+              "lon": 4.838497
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Bled",
+      "country": "Slovenia",
+      "earliest_arrival": "2026-08-15T06:38:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_05:45_eu-flixbus_N160-4-0545082026-KHG#TRT-00",
+          "service": "FlixBus N160",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T19:50:00+02:00",
+          "stops": [
+            {
+              "station": "Bled bus station",
+              "arrival": "2026-08-15T06:38:00+02:00",
+              "lat": 46.37119,
+              "lon": 14.106885
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Łódź",
+      "country": "Poland",
+      "earliest_arrival": "2026-08-15T06:40:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_17:20_lt-kautra_39740",
+          "service": "M-1230N",
+          "operator": "UAB Kautra",
+          "mode": "COACH",
+          "departure": "2026-08-14T23:15:00+02:00",
+          "stops": [
+            {
+              "station": "Lodz, Fabryczna",
+              "arrival": "2026-08-15T06:40:00+02:00",
+              "lat": 51.76984,
+              "lon": 19.47039
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Dusseldorf",
+      "country": "Germany",
+      "earliest_arrival": "2026-08-15T06:45:00+02:00",
+      "service_count": 2,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_07:00_eu-flixbus_N20-4-0700082026-MEX#AMD-00",
+          "service": "FlixBus N20",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T22:00:00+02:00",
+          "stops": [
+            {
+              "station": "Düsseldorf central bus station",
+              "arrival": "2026-08-15T06:45:00+02:00",
+              "lat": 51.222866,
+              "lon": 6.79542
+            }
+          ]
+        },
+        {
+          "trip_id": "20260814_18:00_eu-flixbus_N23-5-1800082026-PRA#CGN-00",
+          "service": "FlixBus N23",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T22:15:00+02:00",
+          "stops": [
+            {
+              "station": "Düsseldorf central bus station",
+              "arrival": "2026-08-15T06:45:00+02:00",
+              "lat": 51.222866,
+              "lon": 6.79542
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Hamburg",
+      "country": "Germany",
+      "earliest_arrival": "2026-08-15T06:45:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_19:30_eu-flixbus_N70-2-1930082026-PRA#HH-00",
+          "service": "FlixBus N70",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T23:45:00+02:00",
+          "stops": [
+            {
+              "station": "Hamburg central bus station",
+              "arrival": "2026-08-15T06:45:00+02:00",
+              "lat": 53.551764999999996,
+              "lon": 10.011657
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Mannheim",
+      "country": "Germany",
+      "earliest_arrival": "2026-08-15T06:45:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_11:20_eu-flixbus_N1305-1-1120082026-WZA#PQB-00",
+          "service": "FlixBus N1305",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T23:00:00+02:00",
+          "stops": [
+            {
+              "station": "Mannheim central bus station",
+              "arrival": "2026-08-15T06:45:00+02:00",
+              "lat": 49.47808,
+              "lon": 8.472819000000001
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Rzeszów",
+      "country": "Poland",
+      "earliest_arrival": "2026-08-15T07:00:00+02:00",
+      "service_count": 2,
+      "station_count": 2,
+      "services": [
+        {
+          "trip_id": "20260814_05:20_eu-flixbus_N1367-2-0520082026-ALK#PRM-00",
+          "service": "FlixBus N1367",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T21:10:00+02:00",
+          "stops": [
+            {
+              "station": "Rzeszow, Bus Station",
+              "arrival": "2026-08-15T07:00:00+02:00",
+              "lat": 50.043068,
+              "lon": 21.994398
+            }
+          ]
+        },
+        {
+          "trip_id": "20260814_15:03_pl-Polish-Trains_PLK_LEO_2026_516260411",
+          "service": "LEO 1248",
+          "operator": "Leo Express",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T22:30:00+02:00",
+          "stops": [
+            {
+              "station": "Rzeszów Główny",
+              "arrival": "2026-08-15T10:23:00+02:00",
+              "lat": 50.042930000000005,
+              "lon": 22.006067
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Vienna",
+      "country": "Austria",
+      "earliest_arrival": "2026-08-15T07:00:00+02:00",
+      "service_count": 1,
+      "station_count": 2,
+      "services": [
+        {
+          "trip_id": "20260814_20:13_de-DELFI_3338596004",
+          "service": "27N",
+          "operator": "Österreichische Bundesbahnen",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T22:10:00+02:00",
+          "stops": [
+            {
+              "station": "Wien Hauptbahnhof",
+              "arrival": "2026-08-15T07:00:00+02:00",
+              "lat": 48.185100000000006,
+              "lon": 16.377113
+            },
+            {
+              "station": "Wien Meidling",
+              "arrival": "2026-08-15T07:10:00+02:00",
+              "lat": 48.174583,
+              "lon": 16.333736
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Oświęcim",
+      "country": "Poland",
+      "earliest_arrival": "2026-08-15T07:26:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_15:03_pl-Polish-Trains_PLK_LEO_2026_516260411",
+          "service": "LEO 1248",
+          "operator": "Leo Express",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T22:30:00+02:00",
+          "stops": [
+            {
+              "station": "Oświęcim",
+              "arrival": "2026-08-15T07:26:00+02:00",
+              "lat": 50.04176699999999,
+              "lon": 19.199968000000005
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Maastricht",
+      "country": "Netherlands",
+      "earliest_arrival": "2026-08-15T07:30:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_09:55_eu-flixbus_1304-11-0955082026-WZA#BNO-00",
+          "service": "FlixBus 1304",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T21:25:00+02:00",
+          "stops": [
+            {
+              "station": "Maastricht (International Bus Station)",
+              "arrival": "2026-08-15T07:30:00+02:00",
+              "lat": 50.852543,
+              "lon": 5.7055620000000005
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Ljubljana",
+      "country": "Slovenia",
+      "earliest_arrival": "2026-08-15T07:38:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_05:45_eu-flixbus_N160-4-0545082026-KHG#TRT-00",
+          "service": "FlixBus N160",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T19:50:00+02:00",
+          "stops": [
+            {
+              "station": "Ljubljana bus station",
+              "arrival": "2026-08-15T07:38:00+02:00",
+              "lat": 46.057719999999996,
+              "lon": 14.510167
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Wiener Neustadt",
+      "country": "Austria",
+      "earliest_arrival": "2026-08-15T07:41:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_20:13_de-DELFI_3338596004",
+          "service": "27N",
+          "operator": "Österreichische Bundesbahnen",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T22:10:00+02:00",
+          "stops": [
+            {
+              "station": "Wiener Neustadt Hauptbahnhof",
+              "arrival": "2026-08-15T07:41:00+02:00",
+              "lat": 47.81107999999999,
+              "lon": 16.233652
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Gedser",
+      "country": "Denmark",
+      "earliest_arrival": "2026-08-15T08:00:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_18:30_eu-flixbus_N232-1-1830082026-PRA#KHG-00",
+          "service": "FlixBus N232",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T22:45:00+02:00",
+          "stops": [
+            {
+              "station": "Gedser (Ferry) Waypoint",
+              "arrival": "2026-08-15T08:00:00+02:00",
+              "lat": 54.57377,
+              "lon": 11.924642
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Cologne",
+      "country": "Germany",
+      "earliest_arrival": "2026-08-15T08:05:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_18:00_eu-flixbus_N23-5-1800082026-PRA#CGN-00",
+          "service": "FlixBus N23",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T22:15:00+02:00",
+          "stops": [
+            {
+              "station": "Cologne Airport CGN (Terminal 2)",
+              "arrival": "2026-08-15T08:05:00+02:00",
+              "lat": 50.88099999999999,
+              "lon": 7.117832999999999
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Mainz",
+      "country": "Germany",
+      "earliest_arrival": "2026-08-15T08:10:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_09:50_eu-flixbus_N1366-2-0950082026-MEX#LUX-00",
+          "service": "FlixBus N1366",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T23:59:00+02:00",
+          "stops": [
+            {
+              "station": "Mainz central train station (exit West)",
+              "arrival": "2026-08-15T08:10:00+02:00",
+              "lat": 50.000435,
+              "lon": 8.258504
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Przemyśl",
+      "country": "Poland",
+      "earliest_arrival": "2026-08-15T08:15:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_05:20_eu-flixbus_N1367-2-0520082026-ALK#PRM-00",
+          "service": "FlixBus N1367",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T21:10:00+02:00",
+          "stops": [
+            {
+              "station": "Przemysl, Bus Station",
+              "arrival": "2026-08-15T08:15:00+02:00",
+              "lat": 49.784126,
+              "lon": 22.77536
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Schaffhausen",
+      "country": "Switzerland",
+      "earliest_arrival": "2026-08-15T08:24:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_20:11_de-DELFI_3338556168",
+          "service": "IC 458",
+          "operator": "DB Fernverkehr AG",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T21:02:00+02:00",
+          "stops": [
+            {
+              "station": "Schaffhausen",
+              "arrival": "2026-08-15T08:24:00+02:00",
+              "lat": 47.698280000000004,
+              "lon": 8.632756
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Nykøbing Falster",
+      "country": "Denmark",
+      "earliest_arrival": "2026-08-15T08:30:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_18:30_eu-flixbus_N232-1-1830082026-PRA#KHG-00",
+          "service": "FlixBus N232",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T22:45:00+02:00",
+          "stops": [
+            {
+              "station": "Nykøbing Falster",
+              "arrival": "2026-08-15T08:30:00+02:00",
+              "lat": 54.770283,
+              "lon": 11.872409000000003
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Krakow",
+      "country": "Poland",
+      "earliest_arrival": "2026-08-15T08:31:00+02:00",
+      "service_count": 1,
+      "station_count": 2,
+      "services": [
+        {
+          "trip_id": "20260814_15:03_pl-Polish-Trains_PLK_LEO_2026_516260411",
+          "service": "LEO 1248",
+          "operator": "Leo Express",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T22:30:00+02:00",
+          "stops": [
+            {
+              "station": "Kraków Główny",
+              "arrival": "2026-08-15T08:31:00+02:00",
+              "lat": 50.068428000000004,
+              "lon": 19.948092999999997
+            },
+            {
+              "station": "Kraków Płaszów",
+              "arrival": "2026-08-15T08:40:00+02:00",
+              "lat": 50.03510300000001,
+              "lon": 19.974635999999997
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Mürzzuschlag",
+      "country": "Austria",
+      "earliest_arrival": "2026-08-15T08:41:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_20:13_de-DELFI_3338596004",
+          "service": "27N",
+          "operator": "Österreichische Bundesbahnen",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T22:10:00+02:00",
+          "stops": [
+            {
+              "station": "Mürzzuschlag",
+              "arrival": "2026-08-15T08:41:00+02:00",
+              "lat": 47.607910000000004,
+              "lon": 15.677244
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Saarbrücken",
+      "country": "Germany",
+      "earliest_arrival": "2026-08-15T08:50:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_11:20_eu-flixbus_N1305-1-1120082026-WZA#PQB-00",
+          "service": "FlixBus N1305",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T23:00:00+02:00",
+          "stops": [
+            {
+              "station": "Saarbrücken bus station (Dudweilerstraße)",
+              "arrival": "2026-08-15T08:50:00+02:00",
+              "lat": 49.242020000000004,
+              "lon": 6.999785
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Paris",
+      "country": "France",
+      "earliest_arrival": "2026-08-15T09:00:00+02:00",
+      "service_count": 1,
+      "station_count": 2,
+      "services": [
+        {
+          "trip_id": "20260814_03:55_eu-flixbus_N1306-3-0355082026-LBI#ETR-00",
+          "service": "FlixBus N1306",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T18:00:00+02:00",
+          "stops": [
+            {
+              "station": "Paris (Bercy Seine)",
+              "arrival": "2026-08-15T09:00:00+02:00",
+              "lat": 48.83532,
+              "lon": 2.380519
+            },
+            {
+              "station": "Paris (Pershing - Porte Maillot)",
+              "arrival": "2026-08-15T09:50:00+02:00",
+              "lat": 48.88020699999999,
+              "lon": 2.2825330000000004
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Warsaw",
+      "country": "Poland",
+      "earliest_arrival": "2026-08-15T09:00:00+02:00",
+      "service_count": 1,
+      "station_count": 2,
+      "services": [
+        {
+          "trip_id": "20260814_17:20_lt-kautra_39740",
+          "service": "M-1230N",
+          "operator": "UAB Kautra",
+          "mode": "COACH",
+          "departure": "2026-08-14T23:15:00+02:00",
+          "stops": [
+            {
+              "station": "Warszawa, Dw. Aut. Zachodnia",
+              "arrival": "2026-08-15T09:00:00+02:00",
+              "lat": 52.217859999999995,
+              "lon": 20.963279999999997
+            },
+            {
+              "station": "Warszawa Metro Marymont 14",
+              "arrival": "2026-08-15T09:32:00+02:00",
+              "lat": 52.27197,
+              "lon": 20.968499999999995
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Bochnia",
+      "country": "Poland",
+      "earliest_arrival": "2026-08-15T09:05:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_15:03_pl-Polish-Trains_PLK_LEO_2026_516260411",
+          "service": "LEO 1248",
+          "operator": "Leo Express",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T22:30:00+02:00",
+          "stops": [
+            {
+              "station": "Bochnia",
+              "arrival": "2026-08-15T09:05:00+02:00",
+              "lat": 49.977314,
+              "lon": 20.430754
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Bruck an der Mur",
+      "country": "Austria",
+      "earliest_arrival": "2026-08-15T09:09:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_20:13_de-DELFI_3338596004",
+          "service": "27N",
+          "operator": "Österreichische Bundesbahnen",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T22:10:00+02:00",
+          "stops": [
+            {
+              "station": "Bruck/Mur",
+              "arrival": "2026-08-15T09:09:00+02:00",
+              "lat": 47.41387999999999,
+              "lon": 15.279491
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Trieste",
+      "country": "Italy",
+      "earliest_arrival": "2026-08-15T09:10:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_05:45_eu-flixbus_N160-4-0545082026-KHG#TRT-00",
+          "service": "FlixBus N160",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T19:50:00+02:00",
+          "stops": [
+            {
+              "station": "Trieste (Autostazione)",
+              "arrival": "2026-08-15T09:10:00+02:00",
+              "lat": 45.657192,
+              "lon": 13.770827999999998
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Brzesko",
+      "country": "Poland",
+      "earliest_arrival": "2026-08-15T09:14:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_15:03_pl-Polish-Trains_PLK_LEO_2026_516260411",
+          "service": "LEO 1248",
+          "operator": "Leo Express",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T22:30:00+02:00",
+          "stops": [
+            {
+              "station": "Brzesko Okocim",
+              "arrival": "2026-08-15T09:14:00+02:00",
+              "lat": 49.986743999999995,
+              "lon": 20.609339
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Zurich",
+      "country": "Switzerland",
+      "earliest_arrival": "2026-08-15T09:19:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_20:11_de-DELFI_3338556168",
+          "service": "IC 458",
+          "operator": "DB Fernverkehr AG",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T21:02:00+02:00",
+          "stops": [
+            {
+              "station": "Zürich HB",
+              "arrival": "2026-08-15T09:19:00+02:00",
+              "lat": 47.378178000000005,
+              "lon": 8.540211999999999
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Frankfurt-Hahn Airport",
+      "country": "Germany",
+      "earliest_arrival": "2026-08-15T09:20:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_09:50_eu-flixbus_N1366-2-0950082026-MEX#LUX-00",
+          "service": "FlixBus N1366",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T23:59:00+02:00",
+          "stops": [
+            {
+              "station": "Frankfurt-Hahn Airport (Terminal A)",
+              "arrival": "2026-08-15T09:20:00+02:00",
+              "lat": 49.945510000000006,
+              "lon": 7.269688
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Brussels",
+      "country": "Belgium",
+      "earliest_arrival": "2026-08-15T09:30:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_09:55_eu-flixbus_1304-11-0955082026-WZA#BNO-00",
+          "service": "FlixBus 1304",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T21:25:00+02:00",
+          "stops": [
+            {
+              "station": "Brussels-North train station",
+              "arrival": "2026-08-15T09:30:00+02:00",
+              "lat": 50.862457,
+              "lon": 4.358749
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Tarnów",
+      "country": "Poland",
+      "earliest_arrival": "2026-08-15T09:40:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_15:03_pl-Polish-Trains_PLK_LEO_2026_516260411",
+          "service": "LEO 1248",
+          "operator": "Leo Express",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T22:30:00+02:00",
+          "stops": [
+            {
+              "station": "Tarnów",
+              "arrival": "2026-08-15T09:40:00+02:00",
+              "lat": 50.005272000000005,
+              "lon": 20.975118999999996
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Graz",
+      "country": "Austria",
+      "earliest_arrival": "2026-08-15T09:47:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_20:13_de-DELFI_3338596004",
+          "service": "27N",
+          "operator": "Österreichische Bundesbahnen",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T22:10:00+02:00",
+          "stops": [
+            {
+              "station": "Graz Hauptbahnhof",
+              "arrival": "2026-08-15T09:47:00+02:00",
+              "lat": 47.0724,
+              "lon": 15.416519000000001
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Dębica",
+      "country": "Poland",
+      "earliest_arrival": "2026-08-15T09:56:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_15:03_pl-Polish-Trains_PLK_LEO_2026_516260411",
+          "service": "LEO 1248",
+          "operator": "Leo Express",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T22:30:00+02:00",
+          "stops": [
+            {
+              "station": "Dębica",
+              "arrival": "2026-08-15T09:56:00+02:00",
+              "lat": 50.053913,
+              "lon": 21.404161000000002
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Ropczyce",
+      "country": "Poland",
+      "earliest_arrival": "2026-08-15T10:03:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_15:03_pl-Polish-Trains_PLK_LEO_2026_516260411",
+          "service": "LEO 1248",
+          "operator": "Leo Express",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T22:30:00+02:00",
+          "stops": [
+            {
+              "station": "Ropczyce",
+              "arrival": "2026-08-15T10:03:00+02:00",
+              "lat": 50.07835800000001,
+              "lon": 21.579860000000004
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Copenhagen",
+      "country": "Denmark",
+      "earliest_arrival": "2026-08-15T10:05:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_18:30_eu-flixbus_N232-1-1830082026-PRA#KHG-00",
+          "service": "FlixBus N232",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T22:45:00+02:00",
+          "stops": [
+            {
+              "station": "Copenhagen Busterminal",
+              "arrival": "2026-08-15T10:05:00+02:00",
+              "lat": 55.66449,
+              "lon": 12.56091
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Sędziszów Małopolski",
+      "country": "Poland",
+      "earliest_arrival": "2026-08-15T10:09:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_15:03_pl-Polish-Trains_PLK_LEO_2026_516260411",
+          "service": "LEO 1248",
+          "operator": "Leo Express",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T22:30:00+02:00",
+          "stops": [
+            {
+              "station": "Sędziszów Małopolski",
+              "arrival": "2026-08-15T10:09:00+02:00",
+              "lat": 50.07555000000001,
+              "lon": 21.69022
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Trier",
+      "country": "Germany",
+      "earliest_arrival": "2026-08-15T10:25:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_09:50_eu-flixbus_N1366-2-0950082026-MEX#LUX-00",
+          "service": "FlixBus N1366",
+          "operator": "FlixBus-eu",
+          "mode": "COACH",
+          "departure": "2026-08-14T23:59:00+02:00",
+          "stops": [
+            {
+              "station": "Trier central train station (Kürenzer St.)",
+              "arrival": "2026-08-15T10:25:00+02:00",
+              "lat": 49.758210000000005,
+              "lon": 6.653135999999999
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Łańcut",
+      "country": "Poland",
+      "earliest_arrival": "2026-08-15T10:34:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_15:03_pl-Polish-Trains_PLK_LEO_2026_516260411",
+          "service": "LEO 1248",
+          "operator": "Leo Express",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T22:30:00+02:00",
+          "stops": [
+            {
+              "station": "Łańcut",
+              "arrival": "2026-08-15T10:34:00+02:00",
+              "lat": 50.081706999999994,
+              "lon": 22.227262
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Przeworsk",
+      "country": "Poland",
+      "earliest_arrival": "2026-08-15T10:48:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_15:03_pl-Polish-Trains_PLK_LEO_2026_516260411",
+          "service": "LEO 1248",
+          "operator": "Leo Express",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T22:30:00+02:00",
+          "stops": [
+            {
+              "station": "Przeworsk",
+              "arrival": "2026-08-15T10:48:00+02:00",
+              "lat": 50.066886999999994,
+              "lon": 22.506117
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "city": "Jarosław",
+      "country": "Poland",
+      "earliest_arrival": "2026-08-15T10:58:00+02:00",
+      "service_count": 1,
+      "station_count": 1,
+      "services": [
+        {
+          "trip_id": "20260814_15:03_pl-Polish-Trains_PLK_LEO_2026_516260411",
+          "service": "LEO 1248",
+          "operator": "Leo Express",
+          "mode": "LONG_DISTANCE",
+          "departure": "2026-08-14T22:30:00+02:00",
+          "stops": [
+            {
+              "station": "Jarosław",
+              "arrival": "2026-08-15T10:58:00+02:00",
+              "lat": 50.010619999999996,
+              "lon": 22.67839
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
