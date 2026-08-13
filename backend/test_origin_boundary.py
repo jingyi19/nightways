@@ -234,6 +234,7 @@ class BoundaryRequestTests(unittest.TestCase):
             request.get_header("User-agent"),
             NOMINATIM_USER_AGENT,
         )
+        self.assertEqual(NOMINATIM_USER_AGENT, "Nightways/0.1")
         self.assertEqual(
             request.get_header("Accept-language"),
             NOMINATIM_ACCEPT_LANGUAGE,

@@ -397,6 +397,26 @@ def get_nightways_for_dresden(
 
     response = _request_dresden_departures(travel_date)
     catalog = DestinationCatalog(reference_file)
+
+    return _build_nightways_response(
+        "Dresden",
+        travel_date,
+        response,
+        catalog,
+        _is_dresden_stop,
+        DRESDEN_ORIGIN.timezone,
+    )
+
+
+def _build_nightways_response(
+    origin_name: str,
+    travel_date: date,
+    response: dict,
+    catalog: DestinationCatalog,
+    origin_stop_matches,
+    origin_timezone: str,
+) -> dict:
+
     target_arrival_date = travel_date + timedelta(days=1)
     trips = {}
 
@@ -407,6 +427,8 @@ def get_nightways_for_dresden(
             travel_date,
             target_arrival_date,
             catalog,
+            origin_stop_matches,
+            origin_timezone,
         )
 
         if trip is None:
@@ -428,7 +450,7 @@ def get_nightways_for_dresden(
     destinations = _build_destinations(trips.values())
 
     return {
-        "origin": "Dresden",
+        "origin": origin_name,
         "date": travel_date.isoformat(),
         "destination_count": len(destinations),
         "destinations": destinations,
@@ -520,6 +542,8 @@ def _extract_trip(
     travel_date: date,
     target_arrival_date: date,
     catalog: DestinationCatalog,
+    origin_stop_matches,
+    origin_timezone: str,
 ) -> dict | None:
 
     trip_id = stop_time.get("tripId")
@@ -531,7 +555,7 @@ def _extract_trip(
         return None
 
 
-    if not _is_dresden_stop(origin_stop):
+    if not origin_stop_matches(origin_stop):
 
         return None
 
@@ -549,7 +573,7 @@ def _extract_trip(
     departure = _local_datetime(
         origin_stop.get("departure")
         or origin_stop.get("scheduledDeparture"),
-        origin_stop.get("tz") or "Europe/Berlin",
+        origin_stop.get("tz") or origin_timezone,
     )
 
     if departure is None or departure.date() != travel_date:
@@ -592,7 +616,7 @@ def _extract_trip(
             continue
 
 
-        if _is_dresden_stop(arrival_stop):
+        if origin_stop_matches(arrival_stop):
 
             continue
 

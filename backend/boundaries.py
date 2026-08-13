@@ -17,10 +17,7 @@ from backend.transitous import ResolvedOrigin
 
 NOMINATIM_BASE_URL = "https://nominatim.openstreetmap.org"
 NOMINATIM_ACCEPT_LANGUAGE = "en"
-# Replace this placeholder with a real project contact before public use.
-NOMINATIM_USER_AGENT = (
-    "Nightways/0.1 (contact: replace-me@example.invalid)"
-)
+NOMINATIM_USER_AGENT = "Nightways/0.1"
 
 
 class BoundaryResolutionError(RuntimeError):
