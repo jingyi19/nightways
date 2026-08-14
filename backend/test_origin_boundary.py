@@ -22,6 +22,7 @@ class BoundaryResolutionTests(unittest.TestCase):
 
     @patch("backend.boundaries._request_nominatim_matches")
     def test_berlin_administrative_multipolygon_is_selected(self, request):
+        origin = _origin("Berlin", "DE")
         request.return_value = [
             _boundary_match(
                 "Berlin",
@@ -32,7 +33,7 @@ class BoundaryResolutionTests(unittest.TestCase):
             )
         ]
 
-        boundary = resolve_origin_boundary(_origin("Berlin", "DE"))
+        boundary = resolve_origin_boundary(origin)
 
         self.assertIsInstance(boundary, OriginBoundary)
         self.assertEqual(boundary.osm_type, "relation")
@@ -41,6 +42,7 @@ class BoundaryResolutionTests(unittest.TestCase):
         self.assertEqual(boundary.country_code, "DE")
         self.assertEqual(boundary.geometry.geojson_type, "MultiPolygon")
         self.assertEqual(boundary.wikidata, "Q64")
+        request.assert_called_once_with(origin)
 
     @patch("backend.boundaries._request_nominatim_matches")
     def test_dresden_administrative_polygon_is_selected(self, request):
@@ -137,6 +139,56 @@ class BoundaryResolutionTests(unittest.TestCase):
                 call(
                     origin,
                     excluded_osm_reference="N13707878",
+                ),
+            ],
+        )
+
+    @patch("backend.boundaries._request_nominatim_matches")
+    def test_local_city_name_retries_missing_canonical_boundary(self, request):
+        origin = _origin("Gothenburg", "SE")
+        city_point = _city_point("Gothenburg", "SE", 25930131)
+        city_point["namedetails"] = {
+            "name": "G\u00f6teborg",
+            "name:en": "Gothenburg",
+        }
+        municipality = _boundary_match(
+            "G\u00f6teborgs Stad",
+            "SE",
+            935611,
+            _rectangle(11.7, 57.5, 12.2, 57.9),
+            address_type="municipality",
+            wikidata="Q52502",
+        )
+        local_origin = ResolvedOrigin(
+            name="G\u00f6teborg",
+            country=origin.country,
+            country_code=origin.country_code,
+            lat=origin.lat,
+            lon=origin.lon,
+            timezone=origin.timezone,
+        )
+        request.side_effect = [
+            [city_point],
+            [],
+            [municipality],
+        ]
+
+        boundary = resolve_origin_boundary(origin)
+
+        self.assertEqual(boundary.osm_id, 935611)
+        self.assertEqual(boundary.country_code, "SE")
+        self.assertEqual(boundary.geometry.geojson_type, "Polygon")
+        self.assertEqual(
+            request.call_args_list,
+            [
+                call(origin),
+                call(
+                    origin,
+                    excluded_osm_reference="N25930131",
+                ),
+                call(
+                    local_origin,
+                    excluded_osm_reference="N25930131",
                 ),
             ],
         )

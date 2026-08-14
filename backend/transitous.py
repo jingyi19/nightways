@@ -121,6 +121,10 @@ ORIGIN_LOCALITY_CATEGORIES = frozenset(
         "village",
     }
 )
+URBAN_LOCALITY_CATEGORIES = frozenset({"city", "town"})
+LOWER_LEVEL_LOCALITY_CATEGORIES = frozenset(
+    {"hamlet", "locality", "village"}
+)
 
 
 def resolve_origin(city_name: str) -> ResolvedOrigin:
@@ -159,13 +163,23 @@ def resolve_origin(city_name: str) -> ResolvedOrigin:
     plausible_candidates = name_candidates
 
     if len(name_candidates) > 1:
-        administrative_matches = [
+        urban_candidates = [
             (candidate, match)
             for candidate, match in name_candidates
-            if _represents_default_locality(match, normalized_name)
+            if _is_urban_locality(match)
         ]
-        if administrative_matches:
-            plausible_candidates = administrative_matches
+        lower_level_candidates = [
+            (candidate, match)
+            for candidate, match in name_candidates
+            if _is_lower_level_locality(match)
+        ]
+        if len(urban_candidates) > 1:
+            plausible_candidates = urban_candidates
+        elif (
+            len(urban_candidates) == 1
+            and len(lower_level_candidates) == len(name_candidates) - 1
+        ):
+            plausible_candidates = urban_candidates
 
     if len(plausible_candidates) > 1:
         raise AmbiguousOriginError(
@@ -307,6 +321,22 @@ def _matches_query_qualifiers(
         and area_name.strip()
     }
     return all(qualifier in matched_areas for qualifier in query_qualifiers)
+
+
+def _is_urban_locality(match: dict) -> bool:
+    category = match.get("category")
+    return isinstance(category, str) and (
+        category.startswith("place_")
+        or category in URBAN_LOCALITY_CATEGORIES
+    )
+
+
+def _is_lower_level_locality(match: dict) -> bool:
+    category = match.get("category")
+    return (
+        isinstance(category, str)
+        and category in LOWER_LEVEL_LOCALITY_CATEGORIES
+    )
 
 
 def _represents_default_locality(

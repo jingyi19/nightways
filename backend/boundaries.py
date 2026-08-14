@@ -7,7 +7,8 @@ exception hierarchy, separate from origin resolution and Transitous failures.
 
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from unicodedata import normalize as unicode_normalize
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -144,8 +145,40 @@ def resolve_origin_boundary(origin: ResolvedOrigin) -> OriginBoundary:
         origin,
         excluded_osm_reference=excluded_reference,
     )
-    fallback_city = _first_boundary(
+    fallback_boundary = _select_fallback_boundary(
         fallback_matches,
+        origin,
+        country_code,
+    )
+    if fallback_boundary is not None:
+        return fallback_boundary
+
+    local_name = _local_city_name(matches[0], origin.name)
+    if local_name is not None:
+        local_matches = _request_nominatim_matches(
+            replace(origin, name=local_name),
+            excluded_osm_reference=excluded_reference,
+        )
+        local_boundary = _select_fallback_boundary(
+            local_matches,
+            origin,
+            country_code,
+        )
+        if local_boundary is not None:
+            return local_boundary
+
+    raise BoundaryNotFoundError(
+        f"No city boundary found for {origin.name!r}."
+    )
+
+
+def _select_fallback_boundary(
+    matches: list[dict],
+    origin: ResolvedOrigin,
+    country_code: str,
+) -> OriginBoundary | None:
+    fallback_city = _first_boundary(
+        matches,
         country_code,
         address_type="city",
     )
@@ -154,7 +187,7 @@ def resolve_origin_boundary(origin: ResolvedOrigin) -> OriginBoundary:
 
     municipalities = [
         boundary
-        for match in fallback_matches
+        for match in matches
         if (
             boundary := _boundary_from_match(
                 match,
@@ -170,9 +203,30 @@ def resolve_origin_boundary(origin: ResolvedOrigin) -> OriginBoundary:
     if len(municipalities) > 1:
         raise AmbiguousBoundaryError(origin, municipalities)
 
-    raise BoundaryNotFoundError(
-        f"No city boundary found for {origin.name!r}."
-    )
+    return None
+
+
+def _local_city_name(match: dict, canonical_name: str) -> str | None:
+    if not isinstance(match, dict):
+        return None
+
+    namedetails = match.get("namedetails") or {}
+    local_name = namedetails.get("name")
+    if not isinstance(local_name, str) or not local_name.strip():
+        return None
+
+    local_name = local_name.strip()
+    if _normalized_boundary_name(local_name) == _normalized_boundary_name(
+        canonical_name
+    ):
+        return None
+
+    return local_name
+
+
+def _normalized_boundary_name(name: str) -> str:
+    normalized = unicode_normalize("NFKC", name)
+    return " ".join(normalized.split()).casefold()
 
 
 def _request_nominatim_matches(

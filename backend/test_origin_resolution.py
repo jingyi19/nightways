@@ -20,6 +20,10 @@ EXPECTED_CITIES = {
     "Prague": ("Prague", "CZ", "Europe/Prague"),
     "Paris": ("Paris", "FR", "Europe/Paris"),
     "Leipzig": ("Leipzig", "DE", "Europe/Berlin"),
+    "Praha": ("Praha", "CZ", "Europe/Prague"),
+    "G\u00f6teborg": ("G\u00f6teborg", "SE", "Europe/Stockholm"),
+    "M\u00fcnchen": ("M\u00fcnchen", "DE", "Europe/Berlin"),
+    "K\u00f6ln": ("K\u00f6ln", "DE", "Europe/Berlin"),
 }
 
 
@@ -121,7 +125,10 @@ class OriginSelectionTests(unittest.TestCase):
 
 
     @patch("backend.transitous._request_place_matches")
-    def test_default_unique_locality_resolves_exact_names(self, request):
+    def test_default_unique_area_does_not_override_two_urban_matches(
+        self,
+        request,
+    ):
 
         capital = _place(
             "Example",
@@ -143,9 +150,9 @@ class OriginSelectionTests(unittest.TestCase):
             _place("Example", "FR", 48.0, 2.0, "Europe/Paris"),
         ]
 
-        result = resolve_origin("Example")
+        with self.assertRaises(AmbiguousOriginError):
 
-        self.assertEqual(result.country_code, "DE")
+            resolve_origin("Example")
 
 
     @patch("backend.transitous._request_place_matches")
@@ -361,6 +368,75 @@ class OriginSelectionTests(unittest.TestCase):
 
         self.assertEqual(result.country_code, "SE")
         self.assertEqual((result.lat, result.lon), (59.3251172, 18.0710935))
+
+
+    @patch("backend.transitous._request_place_matches")
+    def test_local_name_city_beats_only_lower_level_settlements(self, request):
+
+        examples = (
+            ("Praha", "CZ", "SK", "village"),
+            ("G\u00f6teborg", "SE", "SE", "hamlet"),
+            ("M\u00fcnchen", "DE", "DE", "hamlet"),
+            ("K\u00f6ln", "DE", "PL", "hamlet"),
+        )
+
+        for city, country_code, lower_country_code, lower_category in examples:
+
+            with self.subTest(city=city):
+
+                request.return_value = [
+                    _place(
+                        city,
+                        country_code,
+                        50.0,
+                        10.0,
+                        "Europe/Berlin",
+                    ),
+                    _place(
+                        city,
+                        lower_country_code,
+                        51.0,
+                        11.0,
+                        "Europe/Berlin",
+                        category=lower_category,
+                    ),
+                ]
+
+                result = resolve_origin(city)
+
+                self.assertEqual(result.country_code, country_code)
+                self.assertEqual((result.lat, result.lon), (50.0, 10.0))
+
+
+    @patch("backend.transitous._request_place_matches")
+    def test_single_city_or_town_beats_lower_level_settlement(self, request):
+
+        for urban_category in ("city", "town"):
+
+            with self.subTest(category=urban_category):
+
+                request.return_value = [
+                    _place(
+                        "Example",
+                        "DE",
+                        50.0,
+                        10.0,
+                        "Europe/Berlin",
+                        category=urban_category,
+                    ),
+                    _place(
+                        "Example",
+                        "FR",
+                        48.0,
+                        2.0,
+                        "Europe/Paris",
+                        category="village",
+                    ),
+                ]
+
+                result = resolve_origin("Example")
+
+                self.assertEqual(result.country_code, "DE")
 
 
     @patch("backend.transitous._request_place_matches")
