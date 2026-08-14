@@ -7,6 +7,12 @@
 
     <title>Nightways</title>
 
+    <!-- Lightweight connected script for the wordmark only -->
+    <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Allura&display=swap"
+    >
+
     <!-- Your own stylesheet -->
     <link rel="stylesheet" href="style.css">
 
@@ -20,15 +26,18 @@
 <body>
 
     <main>
-        <h1>NIGHTWAYS</h1>
+        <header class="hero">
+            <h1 class="wordmark">Nightways</h1>
 
-        <p class="tagline">Nights on the way.</p>
+            <p class="tagline">
+                Where can you wake up tomorrow?
+            </p>
+        </header>
 
-        <p class="question">
-            Where can you wake up tomorrow?
-        </p>
-
-        <section>
+        <section
+            class="search-panel"
+            aria-label="Search overnight destinations"
+        >
             <label for="origin">From</label>
 
             <input
@@ -50,37 +59,60 @@
             </button>
         </section>
 
-        <div
-            class="mode-filter"
-            role="group"
-            aria-label="Filter destinations by transport mode"
-        >
-            <button
-                class="mode-filter-button is-active"
-                type="button"
-                data-mode="ALL"
-                aria-pressed="true"
+        <div class="destination-controls">
+            <div
+                class="mode-filter"
+                role="group"
+                aria-label="Filter destinations by transport mode"
             >
-                All
-            </button>
+                <button
+                    class="mode-filter-button is-active"
+                    type="button"
+                    data-mode="ALL"
+                    aria-pressed="true"
+                >
+                    All
+                </button>
 
-            <button
-                class="mode-filter-button"
-                type="button"
-                data-mode="TRAIN"
-                aria-pressed="false"
-            >
-                Train
-            </button>
+                <button
+                    class="mode-filter-button"
+                    type="button"
+                    data-mode="TRAIN"
+                    aria-pressed="false"
+                >
+                    Train
+                </button>
 
-            <button
-                class="mode-filter-button"
-                type="button"
-                data-mode="COACH"
-                aria-pressed="false"
-            >
-                Coach
-            </button>
+                <button
+                    class="mode-filter-button"
+                    type="button"
+                    data-mode="COACH"
+                    aria-pressed="false"
+                >
+                    Coach
+                </button>
+            </div>
+
+            <div class="sort-control">
+                <label for="destination-sort">
+                    Sort by
+                </label>
+
+                <select id="destination-sort">
+                    <option value="EARLIEST_ARRIVAL">
+                        Earliest arrival
+                    </option>
+                    <option value="LATEST_DEPARTURE">
+                        Latest departure
+                    </option>
+                    <option value="LONGEST_JOURNEY">
+                        Longest journey
+                    </option>
+                    <option value="NAME">
+                        A–Z
+                    </option>
+                </select>
+            </div>
         </div>
 
         <!-- Europe map -->

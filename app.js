@@ -4,9 +4,11 @@ const API_ENDPOINT =
 const resultsHeading = document.getElementById("results-heading");
 const destinationCount = document.getElementById("destination-count");
 const destinationList = document.getElementById("destination-list");
+const mapElement = document.getElementById("map");
 const searchButton = document.getElementById("search-button");
 const originInput = document.getElementById("origin");
 const dateInput = document.getElementById("date");
+const sortSelect = document.getElementById("destination-sort");
 const modeFilterButtons = document.querySelectorAll(
     ".mode-filter-button"
 );
@@ -17,9 +19,39 @@ const TRAIN_SERVICE_MODES = new Set([
     "REGIONAL_RAIL"
 ]);
 
+const DESTINATION_SORTS = Object.freeze({
+    EARLIEST_ARRIVAL: "EARLIEST_ARRIVAL",
+    LATEST_DEPARTURE: "LATEST_DEPARTURE",
+    LONGEST_JOURNEY: "LONGEST_JOURNEY",
+    NAME: "NAME"
+});
+
+const DESTINATION_NAME_COLLATOR = new Intl.Collator(
+    "en",
+    {
+        numeric: true,
+        sensitivity: "base"
+    }
+);
+
+const CARD_INTERACTIVE_SELECTOR = [
+    "a",
+    "button",
+    "input",
+    "select",
+    "textarea",
+    "summary",
+    "[role]",
+    "[contenteditable]:not([contenteditable='false'])",
+    "[tabindex]:not([tabindex='-1'])"
+].join(",");
+
 let activeMode = "ALL";
+let activeSort =
+    DESTINATION_SORTS.EARLIEST_ARRIVAL;
 let nightwaysData = null;
 let currentSearchController = null;
+let selectedDestinationView = null;
 
 
 // --------------------------------------------------
@@ -29,6 +61,7 @@ let currentSearchController = null;
 const DEFAULT_MAP_CENTER = [50.5, 10.5];
 const DEFAULT_MAP_ZOOM = 4;
 const ORIGIN_ONLY_ZOOM = 9;
+const DESTINATION_FOCUS_ZOOM = 7;
 
 const map = L.map("map").setView(
     DEFAULT_MAP_CENTER,
@@ -256,9 +289,393 @@ const destinationMarkers =
 // TIME FORMATTING
 // --------------------------------------------------
 
-function formatTime(dateString) {
+const OFFSET_TIMESTAMP_PATTERN =
+    /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/;
 
-    return dateString.slice(11, 16);
+
+function getTimestampDetails(timestamp) {
+
+    if (typeof timestamp !== "string") {
+        return null;
+    }
+
+    const match = timestamp.match(
+        OFFSET_TIMESTAMP_PATTERN
+    );
+
+    if (!match) {
+        return null;
+    }
+
+    const epochMilliseconds =
+        new Date(timestamp).getTime();
+
+    if (!Number.isFinite(epochMilliseconds)) {
+        return null;
+    }
+
+    return {
+        timestamp,
+        epochMilliseconds,
+        localTime: `${match[2]}:${match[3]}`
+    };
+}
+
+
+function formatTime(timestamp) {
+
+    return getTimestampDetails(timestamp)
+        ?.localTime ?? "Time unavailable";
+}
+
+
+function getEarliestTimestamp(timestamps) {
+
+    let earliestTimestamp = null;
+
+    for (const timestamp of timestamps) {
+
+        const details =
+            getTimestampDetails(timestamp);
+
+        if (
+            details &&
+            (
+                !earliestTimestamp ||
+                details.epochMilliseconds <
+                    earliestTimestamp.epochMilliseconds
+            )
+        ) {
+            earliestTimestamp = details;
+        }
+    }
+
+    return earliestTimestamp;
+}
+
+
+function getLatestTimestamp(timestamps) {
+
+    let latestTimestamp = null;
+
+    for (const timestamp of timestamps) {
+
+        const details =
+            getTimestampDetails(timestamp);
+
+        if (
+            details &&
+            (
+                !latestTimestamp ||
+                details.epochMilliseconds >
+                    latestTimestamp.epochMilliseconds
+            )
+        ) {
+            latestTimestamp = details;
+        }
+    }
+
+    return latestTimestamp;
+}
+
+
+function getElapsedDurationMilliseconds(
+    departureTimestamp,
+    arrivalTimestamp
+) {
+
+    const departure =
+        getTimestampDetails(departureTimestamp);
+
+    const arrival =
+        getTimestampDetails(arrivalTimestamp);
+
+    if (!departure || !arrival) {
+        return null;
+    }
+
+    const elapsedMilliseconds =
+        arrival.epochMilliseconds -
+        departure.epochMilliseconds;
+
+    if (elapsedMilliseconds < 0) {
+        return null;
+    }
+
+    return elapsedMilliseconds;
+}
+
+
+function formatElapsedDuration(
+    elapsedMilliseconds
+) {
+
+    if (!Number.isFinite(elapsedMilliseconds)) {
+        return null;
+    }
+
+    const totalMinutes = Math.round(
+        elapsedMilliseconds / 60000
+    );
+
+    const hours = Math.floor(
+        totalMinutes / 60
+    );
+
+    const minutes = totalMinutes % 60;
+
+    if (hours === 0) {
+        return `${minutes}m`;
+    }
+
+    return `${hours}h ${minutes}m`;
+}
+
+
+function getServiceTiming(service) {
+
+    const departure =
+        getTimestampDetails(service?.departure);
+
+    const arrival = getEarliestTimestamp(
+        Array.isArray(service?.stops)
+            ? service.stops.map(stop => stop.arrival)
+            : []
+    );
+
+    const elapsedMilliseconds =
+        getElapsedDurationMilliseconds(
+            service?.departure,
+            arrival?.timestamp
+        );
+
+    return {
+        departure,
+        arrival,
+        elapsedMilliseconds,
+        duration: formatElapsedDuration(
+            elapsedMilliseconds
+        )
+    };
+}
+
+
+function formatMode(mode) {
+
+    if (mode === "COACH") {
+        return "Coach";
+    }
+
+    if (TRAIN_SERVICE_MODES.has(mode)) {
+        return "Rail";
+    }
+
+    return null;
+}
+
+
+function formatServiceCount(count) {
+
+    return `${count} direct ${
+        count === 1 ? "service" : "services"
+    }`;
+}
+
+
+function formatStopCount(count) {
+
+    return `${count} ${
+        count === 1 ? "stop" : "stops"
+    }`;
+}
+
+
+function getDestinationServices(destination) {
+
+    return Array.isArray(destination?.services)
+        ? destination.services
+        : [];
+}
+
+
+function getDestinationEarliestArrival(
+    destination
+) {
+
+    return getEarliestTimestamp(
+        getDestinationServices(destination)
+            .flatMap(service =>
+                Array.isArray(service.stops)
+                    ? service.stops.map(
+                        stop => stop.arrival
+                    )
+                    : []
+            )
+    );
+}
+
+
+function getDestinationLatestDeparture(
+    destination
+) {
+
+    return getLatestTimestamp(
+        getDestinationServices(destination)
+            .map(service => service.departure)
+    );
+}
+
+
+function getDestinationLongestJourney(
+    destination
+) {
+
+    let longestJourney = null;
+
+    for (
+        const service
+        of getDestinationServices(destination)
+    ) {
+
+        const elapsedMilliseconds =
+            getServiceTiming(service)
+                .elapsedMilliseconds;
+
+        if (
+            Number.isFinite(elapsedMilliseconds) &&
+            (
+                longestJourney === null ||
+                elapsedMilliseconds > longestJourney
+            )
+        ) {
+            longestJourney = elapsedMilliseconds;
+        }
+    }
+
+    return longestJourney;
+}
+
+
+function createDestinationTimingHTML(destination) {
+
+    const services =
+        getDestinationServices(destination);
+
+    if (services.length === 1) {
+
+        const service = services[0];
+        const timing = getServiceTiming(service);
+        const mode = formatMode(service.mode);
+
+        let journeyTimes =
+            "Timing unavailable";
+
+        if (timing.departure && timing.arrival) {
+            journeyTimes = `
+                <strong>${timing.departure.localTime}</strong>
+                <span aria-hidden="true">→</span>
+                <strong>${timing.arrival.localTime}</strong>
+            `;
+
+        } else if (timing.departure) {
+            journeyTimes = `
+                Departs
+                <strong>${timing.departure.localTime}</strong>
+            `;
+
+        } else if (timing.arrival) {
+            journeyTimes = `
+                Arrives
+                <strong>${timing.arrival.localTime}</strong>
+            `;
+        }
+
+        const detailParts = [
+            timing.duration,
+            mode
+        ].filter(Boolean);
+
+        return `
+            <div class="destination-timing">
+                <p class="destination-journey-times">
+                    ${journeyTimes}
+                </p>
+
+                ${detailParts.length > 0
+                    ? `
+                        <p class="destination-timing-detail">
+                            ${detailParts.join(" · ")}
+                        </p>
+                    `
+                    : ""
+                }
+            </div>
+        `;
+    }
+
+    const earliestArrival =
+        getDestinationEarliestArrival(destination);
+
+    const latestDeparture =
+        getDestinationLatestDeparture(destination);
+
+    if (!earliestArrival && !latestDeparture) {
+        return `
+            <div class="destination-timing">
+                <p class="destination-timing-detail">
+                    Timing unavailable
+                </p>
+            </div>
+        `;
+    }
+
+    return `
+        <div class="destination-timing destination-timing-range">
+            ${earliestArrival
+                ? `
+                    <p>
+                        Earliest arrival
+                        <strong>${earliestArrival.localTime}</strong>
+                    </p>
+                `
+                : ""
+            }
+
+            ${latestDeparture
+                ? `
+                    <p>
+                        Latest departure
+                        <strong>${latestDeparture.localTime}</strong>
+                    </p>
+                `
+                : ""
+            }
+        </div>
+    `;
+}
+
+
+function createDestinationCountHTML(destination) {
+
+    const serviceCount =
+        getDestinationServices(destination).length;
+
+    const counts = [
+        formatServiceCount(serviceCount)
+    ];
+
+    if (
+        Number.isInteger(destination.station_count) &&
+        destination.station_count >= 0
+    ) {
+        counts.push(
+            formatStopCount(
+                destination.station_count
+            )
+        );
+    }
+
+    return counts.join(" · ");
 }
 
 
@@ -341,6 +758,185 @@ function getDestinationForMode(destination) {
         station_count: stationKeys.size,
         services
     };
+}
+
+
+// --------------------------------------------------
+// DESTINATION SORTING
+// --------------------------------------------------
+
+function getDestinationSortMetric(destination) {
+
+    if (
+        activeSort ===
+        DESTINATION_SORTS.EARLIEST_ARRIVAL
+    ) {
+        return getDestinationEarliestArrival(
+            destination
+        )?.epochMilliseconds ?? null;
+    }
+
+    if (
+        activeSort ===
+        DESTINATION_SORTS.LATEST_DEPARTURE
+    ) {
+        return getDestinationLatestDeparture(
+            destination
+        )?.epochMilliseconds ?? null;
+    }
+
+    if (
+        activeSort ===
+        DESTINATION_SORTS.LONGEST_JOURNEY
+    ) {
+        return getDestinationLongestJourney(
+            destination
+        );
+    }
+
+    return null;
+}
+
+
+function compareOptionalNumbers(
+    leftValue,
+    rightValue,
+    direction
+) {
+
+    const leftIsValid =
+        Number.isFinite(leftValue);
+
+    const rightIsValid =
+        Number.isFinite(rightValue);
+
+    if (leftIsValid !== rightIsValid) {
+        return leftIsValid ? -1 : 1;
+    }
+
+    if (!leftIsValid) {
+        return 0;
+    }
+
+    if (leftValue === rightValue) {
+        return 0;
+    }
+
+    return leftValue < rightValue
+        ? -direction
+        : direction;
+}
+
+
+function getDestinationName(destination) {
+
+    if (
+        typeof destination?.city !== "string" ||
+        !destination.city.trim()
+    ) {
+        return null;
+    }
+
+    return destination.city.trim();
+}
+
+
+function compareOptionalText(
+    leftValue,
+    rightValue
+) {
+
+    const leftIsValid =
+        typeof leftValue === "string" &&
+        Boolean(leftValue.trim());
+
+    const rightIsValid =
+        typeof rightValue === "string" &&
+        Boolean(rightValue.trim());
+
+    if (leftIsValid !== rightIsValid) {
+        return leftIsValid ? -1 : 1;
+    }
+
+    if (!leftIsValid) {
+        return 0;
+    }
+
+    return DESTINATION_NAME_COLLATOR.compare(
+        leftValue,
+        rightValue
+    );
+}
+
+
+function compareDestinationViews(
+    leftView,
+    rightView
+) {
+
+    if (activeSort === DESTINATION_SORTS.NAME) {
+
+        const nameComparison = compareOptionalText(
+            getDestinationName(leftView.destination),
+            getDestinationName(rightView.destination)
+        );
+
+        if (nameComparison !== 0) {
+            return nameComparison;
+        }
+
+        const countryComparison =
+            compareOptionalText(
+                leftView.destination.country,
+                rightView.destination.country
+            );
+
+        if (countryComparison !== 0) {
+            return countryComparison;
+        }
+
+    } else {
+
+        const direction =
+            activeSort ===
+                DESTINATION_SORTS.EARLIEST_ARRIVAL
+                ? 1
+                : -1;
+
+        const metricComparison =
+            compareOptionalNumbers(
+                getDestinationSortMetric(
+                    leftView.destination
+                ),
+                getDestinationSortMetric(
+                    rightView.destination
+                ),
+                direction
+            );
+
+        if (metricComparison !== 0) {
+            return metricComparison;
+        }
+    }
+
+    return leftView.canonicalIndex -
+        rightView.canonicalIndex;
+}
+
+
+function getVisibleSortedDestinations(
+    destinations
+) {
+
+    return destinations
+        .map((destination, canonicalIndex) => ({
+            destination:
+                getDestinationForMode(destination),
+            canonicalIndex
+        }))
+        .filter(view => view.destination !== null)
+        .sort(compareDestinationViews)
+        .map(view => view.destination);
 }
 
 
@@ -528,6 +1124,116 @@ function resetDestinationMarker(marker) {
 }
 
 
+function selectDestinationMarker(marker) {
+
+    marker.setRadius(9);
+
+    marker.setStyle({
+        color: "#ffffff",
+        weight: 3,
+        fillColor: "#245b93",
+        fillOpacity: 1
+    });
+
+    marker.bringToFront();
+}
+
+
+function clearSelectedDestination() {
+
+    if (!selectedDestinationView) {
+        return;
+    }
+
+    selectedDestinationView.card.classList.remove(
+        "is-selected"
+    );
+
+    resetDestinationMarker(
+        selectedDestinationView.marker
+    );
+
+    selectedDestinationView.hitMarker.closePopup();
+    selectedDestinationView = null;
+}
+
+
+function selectDestination(destinationView) {
+
+    if (
+        selectedDestinationView &&
+        selectedDestinationView !== destinationView
+    ) {
+        clearSelectedDestination();
+    }
+
+    selectedDestinationView = destinationView;
+
+    destinationView.card.classList.add(
+        "is-selected"
+    );
+
+    selectDestinationMarker(
+        destinationView.marker
+    );
+
+    showDestinationPreview(
+        destinationView.destination
+    );
+
+    destinationView.hitMarker.openPopup();
+}
+
+
+function navigateToDestinationOnMap(destinationView) {
+
+    selectDestination(
+        destinationView
+    );
+
+    mapElement.scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+    });
+
+    map.flyTo(
+        destinationView.coordinates,
+        Math.max(
+            map.getZoom(),
+            DESTINATION_FOCUS_ZOOM
+        ),
+        {
+            animate: true,
+            duration: 0.75
+        }
+    );
+}
+
+
+function createDestinationPopup(destination) {
+
+    const popupContent =
+        document.createElement("div");
+
+    const popupCity =
+        document.createElement("strong");
+
+    popupCity.textContent = destination.city;
+
+    popupContent.append(
+        popupCity,
+        document.createElement("br"),
+        destination.country,
+        document.createElement("br"),
+        `Arrive from ${formatTime(
+            destination.earliest_arrival
+        )}`
+    );
+
+    return popupContent;
+}
+
+
 // --------------------------------------------------
 // SERVICE DETAILS
 // --------------------------------------------------
@@ -555,26 +1261,66 @@ function createServiceHTML(service, originName) {
         `)
         .join("");
 
+    const timing = getServiceTiming(service);
+    const mode = formatMode(service.mode);
+    const serviceIdentifier =
+        service.service || service.trip_id || null;
+
+    const timingParts = [];
+
+    if (timing.departure && timing.arrival) {
+        timingParts.push(
+            `${timing.departure.localTime} → ${timing.arrival.localTime}`
+        );
+
+    } else if (timing.departure) {
+        timingParts.push(
+            `Departs ${timing.departure.localTime}`
+        );
+
+    } else if (timing.arrival) {
+        timingParts.push(
+            `Arrives ${timing.arrival.localTime}`
+        );
+    }
+
+    if (timing.duration) {
+        timingParts.push(timing.duration);
+    }
+
+    const serviceMeta = [
+        mode,
+        serviceIdentifier
+    ].filter(Boolean);
+
 
     return `
         <div class="service-block">
 
             <div class="service-header">
-
                 <strong>
-                    ${service.service}
+                    ${timingParts.length > 0
+                        ? timingParts.join(" · ")
+                        : "Timing unavailable"
+                    }
                 </strong>
-
-                <span>
-                    ${service.mode}
-                </span>
-
             </div>
+
+            ${serviceMeta.length > 0
+                ? `
+                    <p class="service-meta">
+                        ${serviceMeta.join(" · ")}
+                    </p>
+                `
+                : ""
+            }
 
             <div class="departure-info">
 
                 <span>
-                    ${formatTime(service.departure)}
+                    ${timing.departure
+                        ?.localTime ?? "Time unavailable"
+                    }
                 </span>
 
                 <span>
@@ -605,6 +1351,11 @@ function openDestination(card, destination, originName) {
             ".destination-details"
         );
 
+    const detailsToggle =
+        card.querySelector(
+            ".destination-details-toggle"
+        );
+
 
     if (existingDetails) {
 
@@ -612,6 +1363,16 @@ function openDestination(card, destination, originName) {
 
         card.classList.remove(
             "expanded"
+        );
+
+        detailsToggle.textContent = "＋";
+        detailsToggle.setAttribute(
+            "aria-expanded",
+            "false"
+        );
+        detailsToggle.setAttribute(
+            "aria-label",
+            `Show services for ${destination.city}`
         );
 
         return;
@@ -647,6 +1408,16 @@ function openDestination(card, destination, originName) {
 
     card.classList.add(
         "expanded"
+    );
+
+    detailsToggle.textContent = "−";
+    detailsToggle.setAttribute(
+        "aria-expanded",
+        "true"
+    );
+    detailsToggle.setAttribute(
+        "aria-label",
+        `Hide services for ${destination.city}`
     );
 }
 
@@ -748,6 +1519,8 @@ async function loadNightwaysData(reloadData = true) {
     destinationCount.textContent =
         "Loading...";
 
+    clearSelectedDestination();
+
     destinationList.innerHTML = "";
 
     destinationMarkers.clearLayers();
@@ -825,11 +1598,9 @@ async function loadNightwaysData(reloadData = true) {
 
 
         const visibleDestinations =
-            data.destinations
-                .map(getDestinationForMode)
-                .filter(destination =>
-                    destination !== null
-                );
+            getVisibleSortedDestinations(
+                data.destinations
+            );
 
 
         resultsHeading.textContent =
@@ -879,38 +1650,45 @@ async function loadNightwaysData(reloadData = true) {
 
                     </div>
 
-                    <span class="expand-icon">
+                    <button
+                        class="destination-details-toggle"
+                        type="button"
+                        aria-expanded="false"
+                    >
                         ＋
-                    </span>
+                    </button>
 
                 </div>
 
-                <p>
-                    Arrive from
+                ${createDestinationTimingHTML(
+                    destination
+                )}
 
-                    <strong>
-                        ${formatTime(
-                            destination.earliest_arrival
-                        )}
-                    </strong>
-                </p>
-
-                <p>
-                    ${destination.service_count}
-                    service(s)
-
-                    ·
-
-                    ${destination.station_count}
-                    stop(s)
+                <p class="destination-counts">
+                    ${createDestinationCountHTML(
+                        destination
+                    )}
                 </p>
             `;
 
 
-            // Click card
-            card.addEventListener(
+            const detailsToggle =
+                card.querySelector(
+                    ".destination-details-toggle"
+                );
+
+
+            detailsToggle.setAttribute(
+                "aria-label",
+                `Show services for ${destination.city}`
+            );
+
+
+            detailsToggle.addEventListener(
                 "click",
-                () => {
+                event => {
+
+                    event.stopPropagation();
 
                     openDestination(
                         card,
@@ -976,15 +1754,68 @@ async function loadNightwaysData(reloadData = true) {
                     );
 
 
+                hitMarker.bindPopup(
+                    createDestinationPopup(
+                        destination
+                    )
+                );
+
+
+                const destinationView = {
+                    destination,
+                    card,
+                    marker,
+                    hitMarker,
+                    coordinates
+                };
+
+
+                card.classList.add(
+                    "is-map-target"
+                );
+
+
+                card.addEventListener(
+                    "click",
+                    event => {
+
+                        if (
+                            event.target.closest(
+                                CARD_INTERACTIVE_SELECTOR
+                            ) ||
+                            event.target.closest(
+                                ".destination-details"
+                            )
+                        ) {
+                            return;
+                        }
+
+                        navigateToDestinationOnMap(
+                            destinationView
+                        );
+                    }
+                );
+
+
                 // ----------------------------------
                 // SHOW / HIDE PREVIEW
                 // ----------------------------------
 
                 function showPreview() {
 
-                    highlightDestinationMarker(
-                        marker
-                    );
+                    if (
+                        selectedDestinationView ===
+                        destinationView
+                    ) {
+                        selectDestinationMarker(
+                            marker
+                        );
+
+                    } else {
+                        highlightDestinationMarker(
+                            marker
+                        );
+                    }
 
                     showDestinationPreview(
                         destination
@@ -994,11 +1825,25 @@ async function loadNightwaysData(reloadData = true) {
 
                 function hidePreview() {
 
-                    resetDestinationMarker(
-                        marker
-                    );
+                    if (
+                        selectedDestinationView !==
+                        destinationView
+                    ) {
+                        resetDestinationMarker(
+                            marker
+                        );
+                    }
 
-                    clearDestinationPreview();
+
+                    if (selectedDestinationView) {
+                        showDestinationPreview(
+                            selectedDestinationView
+                                .destination
+                        );
+
+                    } else {
+                        clearDestinationPreview();
+                    }
                 }
 
 
@@ -1008,7 +1853,9 @@ async function loadNightwaysData(reloadData = true) {
 
                 function selectDestinationFromMap() {
 
-                    showPreview();
+                    selectDestination(
+                        destinationView
+                    );
 
                     ensureDestinationOpen(
                         card,
@@ -1186,6 +2033,28 @@ for (const button of modeFilterButtons) {
         }
     );
 }
+
+
+// --------------------------------------------------
+// DESTINATION SORT
+// --------------------------------------------------
+
+sortSelect.addEventListener(
+    "change",
+    () => {
+
+        if (
+            !Object.values(DESTINATION_SORTS)
+                .includes(sortSelect.value)
+        ) {
+            return;
+        }
+
+        activeSort = sortSelect.value;
+
+        loadNightwaysData(false);
+    }
+);
 
 
 // --------------------------------------------------

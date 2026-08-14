@@ -39,34 +39,111 @@ body {
 main {
     width: min(1120px, 92%);
     margin: 0 auto;
-    padding: 70px 0 90px;
+    padding: 54px 0 90px;
 }
 
 /* Header */
 
-h1 {
+.hero {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+
+    padding: 5px 0 32px;
+
+    text-align: center;
+}
+
+.hero::before,
+.hero::after {
+    content: "";
+    position: absolute;
+    z-index: 0;
+    left: 50%;
+
+    pointer-events: none;
+}
+
+.hero::before {
+    top: 11px;
+
+    width: min(760px, 88%);
+    height: 78px;
+
+    background:
+        radial-gradient(
+            ellipse at 48% 50%,
+            rgba(184, 207, 225, 0.13) 0%,
+            rgba(137, 171, 202, 0.07) 40%,
+            transparent 73%
+        );
+
+    filter: blur(16px);
+    opacity: 0.82;
+    transform: translateX(-50%);
+}
+
+.hero::after {
+    top: 48px;
+
+    width: min(680px, 82%);
+    height: 24px;
+
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(171, 198, 220, 0.025) 13%,
+        rgba(171, 198, 220, 0.10) 46%,
+        rgba(206, 222, 234, 0.07) 63%,
+        transparent 100%
+    );
+
+    filter: blur(8px);
+    transform: translateX(-50%) skewX(-12deg);
+}
+
+.wordmark,
+.tagline {
+    position: relative;
+    z-index: 1;
+}
+
+.wordmark {
     margin: 0;
-    color: var(--white);
-    font-size: 46px;
-    letter-spacing: 5px;
+
+    color: #d5e1e9;
+
+    font-family: "Allura", "Segoe Script", cursive;
+    font-size: clamp(3.5rem, 7.5vw, 4.75rem);
+    font-style: normal;
+    font-weight: 400;
+    font-kerning: normal;
+    font-feature-settings: "kern", "liga", "clig";
+    font-synthesis: none;
+    letter-spacing: -0.01em;
+    line-height: 0.92;
+    white-space: nowrap;
+
+    transform: scaleX(1.12);
+    transform-origin: center;
+
+    text-shadow: 0 1px 4px rgba(2, 12, 28, 0.22);
 }
 
 .tagline {
-    margin: 10px 0 0;
-    color: var(--blue-200);
-    font-size: 17px;
-    font-style: italic;
-}
+    margin: 12px 0 0;
 
-.question {
-    margin: 10px 0 36px;
-    color: var(--blue-300);
-    font-size: 19px;
+    color: var(--blue-200);
+
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 18px;
+    font-style: normal;
+    line-height: 1.4;
 }
 
 /* Search box */
 
-main > section:first-of-type {
+.search-panel {
     background: rgba(255, 255, 255, 0.98);
 
     padding: 22px;
@@ -141,6 +218,15 @@ button:hover {
     transform: translateY(-1px);
 }
 
+/* Destination controls */
+
+.destination-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+}
+
 /* Transport mode filter */
 
 .mode-filter {
@@ -192,6 +278,57 @@ button:hover {
     outline-offset: 2px;
 }
 
+/* Destination sort */
+
+.sort-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+
+    min-width: 0;
+    padding: 4px 6px 4px 12px;
+
+    background: rgba(255, 255, 255, 0.92);
+
+    border: 1px solid rgba(23, 58, 99, 0.12);
+    border-radius: 12px;
+
+    box-shadow:
+        0 8px 20px rgba(5, 20, 40, 0.08);
+}
+
+.sort-control label {
+    flex: 0 0 auto;
+
+    color: var(--text-muted);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.sort-control select {
+    min-width: 150px;
+    height: 38px;
+
+    padding: 0 32px 0 10px;
+
+    background: #fbfdff;
+    color: var(--navy-700);
+
+    border: 1px solid #cbd8e6;
+    border-radius: 8px;
+
+    font: inherit;
+    font-size: 14px;
+    outline: none;
+}
+
+.sort-control select:focus-visible {
+    border-color: var(--navy-600);
+
+    box-shadow:
+        0 0 0 3px rgba(36, 84, 135, 0.12);
+}
+
 /* Results */
 
 #results h2 {
@@ -234,7 +371,7 @@ button:hover {
     box-shadow:
         0 4px 14px rgba(13, 35, 64, 0.05);
 
-    cursor: pointer;
+    cursor: default;
 
     transition:
         transform 0.2s ease,
@@ -242,8 +379,12 @@ button:hover {
         border-color 0.2s ease;
 }
 
-.destination-card:hover {
-    transform: translateY(-4px);
+.destination-card.is-map-target {
+    cursor: pointer;
+}
+
+.destination-card.is-map-target:hover {
+    transform: translateY(-2px);
 
     border-color:
         rgba(23, 58, 99, 0.28);
@@ -271,17 +412,69 @@ button:hover {
     font-size: 20px;
 }
 
+.destination-timing {
+    margin-top: 18px;
+}
+
+.destination-timing p {
+    margin: 4px 0;
+}
+
+.destination-journey-times {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.destination-timing-detail,
+.destination-counts {
+    color: var(--text-muted);
+}
+
+.destination-counts {
+    margin-top: 14px;
+}
+
 /* Expandable city header */
 
 .destination-summary {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
+    gap: 12px;
 }
 
-.expand-icon {
+.destination-details-toggle {
+    flex: 0 0 auto;
+
+    width: 30px;
+    height: 30px;
+
+    padding: 0;
+
+    background: transparent;
     color: var(--navy-600);
+
+    border: 1px solid transparent;
+    border-radius: 8px;
+
     font-size: 20px;
+    font-weight: normal;
+    line-height: 1;
+
+    transform: none;
+}
+
+.destination-details-toggle:hover {
+    background: var(--blue-100);
+    color: var(--navy-700);
+
+    transform: none;
+}
+
+.destination-details-toggle:focus-visible {
+    outline: 3px solid rgba(36, 84, 135, 0.22);
+    outline-offset: 2px;
 }
 
 .destination-card.expanded {
@@ -290,6 +483,14 @@ button:hover {
 
     border-color:
         rgba(23, 58, 99, 0.3);
+}
+
+.destination-card.is-selected {
+    border-color: rgba(36, 84, 135, 0.62);
+
+    box-shadow:
+        0 0 0 3px rgba(36, 84, 135, 0.12),
+        0 12px 26px rgba(13, 35, 64, 0.1);
 }
 
 .destination-details {
@@ -319,12 +520,18 @@ button:hover {
     justify-content: space-between;
     align-items: center;
 
-    margin-bottom: 10px;
+    margin-bottom: 4px;
 }
 
 .service-header strong {
     color: var(--navy-800);
-    font-size: 16px;
+    font-size: 18px;
+}
+
+.service-meta {
+    margin: 0 0 12px !important;
+
+    color: var(--navy-600) !important;
 }
 
 .service-header span {
@@ -387,14 +594,36 @@ button:hover {
 @media (max-width: 700px) {
 
     main {
-        padding-top: 40px;
+        padding-top: 34px;
     }
 
-    h1 {
-        font-size: 34px;
+    .hero {
+        padding-top: 2px;
+        padding-bottom: 26px;
     }
 
-    main > section:first-of-type {
+    .hero::before {
+        top: 4px;
+        width: 100%;
+        height: 68px;
+    }
+
+    .hero::after {
+        top: 39px;
+        width: 92%;
+    }
+
+    .wordmark {
+        font-size: clamp(3.3rem, 16vw, 3.75rem);
+        line-height: 0.86;
+    }
+
+    .tagline {
+        margin-top: 10px;
+        font-size: 16px;
+    }
+
+    .search-panel {
         flex-direction: column;
         align-items: stretch;
 
@@ -414,6 +643,22 @@ button:hover {
     .mode-filter-button {
         flex: 1;
         width: auto;
+    }
+
+    .destination-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .sort-control {
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .sort-control select {
+        flex: 1;
+        min-width: 0;
+        width: 100%;
     }
 
     #destination-list {
@@ -441,32 +686,6 @@ body {
       #0b1c33 260px,
       #eef4fa 560px
     );
-}
-
-/* faint station-light line */
-body::before {
-  content: "";
-  position: fixed;
-  top: 215px;
-  left: 0;
-  width: 100%;
-  height: 1px;
-
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(140, 195, 255, 0.08) 15%,
-    rgba(170, 215, 255, 0.35) 50%,
-    rgba(140, 195, 255, 0.08) 85%,
-    transparent 100%
-  );
-
-  box-shadow:
-    0 0 18px rgba(105, 170, 240, 0.16),
-    0 0 35px rgba(105, 170, 240, 0.07);
-
-  pointer-events: none;
-  z-index: 0;
 }
 
 /* Nightways map */
