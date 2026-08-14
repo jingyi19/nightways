@@ -19,6 +19,7 @@ EXPECTED_CITIES = {
     "Vienna": ("Vienna", "AT", "Europe/Vienna"),
     "Prague": ("Prague", "CZ", "Europe/Prague"),
     "Paris": ("Paris", "FR", "Europe/Paris"),
+    "Leipzig": ("Leipzig", "DE", "Europe/Berlin"),
 }
 
 
@@ -69,6 +70,28 @@ class LiveOriginResolutionTests(unittest.TestCase):
             resolve_origin("zzzz-nightways-no-such-city-4f1f2b")
 
 
+    def test_qualified_leipzig(self):
+
+        self.assert_resolves_to(
+            "Leipzig, Germany",
+            EXPECTED_CITIES["Leipzig"],
+        )
+
+
+    def test_reported_nonsense_input(self):
+
+        with self.assertRaises(OriginNotFoundError):
+
+            resolve_origin("sdgdngfn")
+
+
+    def test_genuinely_ambiguous_city(self):
+
+        with self.assertRaises(AmbiguousOriginError):
+
+            resolve_origin("Neustadt")
+
+
 class OriginSelectionTests(unittest.TestCase):
 
     def test_empty_city_is_rejected_without_a_request(self):
@@ -98,7 +121,7 @@ class OriginSelectionTests(unittest.TestCase):
 
 
     @patch("backend.transitous._request_place_matches")
-    def test_matching_administrative_area_resolves_exact_names(self, request):
+    def test_default_unique_locality_resolves_exact_names(self, request):
 
         capital = _place(
             "Example",
@@ -111,6 +134,8 @@ class OriginSelectionTests(unittest.TestCase):
             {
                 "name": "Example",
                 "adminLevel": 6,
+                "default": True,
+                "unique": True,
             }
         ]
         request.return_value = [
@@ -121,6 +146,250 @@ class OriginSelectionTests(unittest.TestCase):
         result = resolve_origin("Example")
 
         self.assertEqual(result.country_code, "DE")
+
+
+    @patch("backend.transitous._request_place_matches")
+    def test_leipzig_prefers_city_over_pois_and_other_localities(
+        self,
+        request,
+    ):
+
+        city = _place(
+            "Leipzig",
+            "DE",
+            51.3406321,
+            12.3747329,
+            "Europe/Berlin",
+        )
+        city["areas"] = [
+            {
+                "name": "Germany",
+                "adminLevel": 2,
+            },
+            {
+                "name": "Leipzig",
+                "adminLevel": 6,
+                "default": True,
+                "unique": True,
+            },
+        ]
+        casino = _place(
+            "Leipzig",
+            "DE",
+            51.3844702,
+            12.3160085,
+            "Europe/Berlin",
+            category="casino_14",
+        )
+        russian_village = _place(
+            "Leipzig",
+            "RU",
+            53.5683129,
+            61.0473018,
+            "Asia/Yekaterinburg",
+            category="village",
+        )
+        russian_village["areas"] = [
+            {
+                "name": "Varna municipal district",
+                "adminLevel": 6,
+                "default": True,
+                "unique": True,
+            }
+        ]
+        request.return_value = [city, casino, russian_village]
+
+        result = resolve_origin("Leipzig")
+
+        self.assertEqual(result.name, "Leipzig")
+        self.assertEqual(result.country_code, "DE")
+        self.assertEqual((result.lat, result.lon), (51.3406321, 12.3747329))
+
+
+    @patch("backend.transitous._request_place_matches")
+    def test_country_qualifier_uses_matched_area_metadata(self, request):
+
+        germany = _place(
+            "Leipzig",
+            "DE",
+            51.3406321,
+            12.3747329,
+            "Europe/Berlin",
+        )
+        germany["areas"] = [
+            {
+                "name": "Germany",
+                "adminLevel": 2,
+                "matched": True,
+            }
+        ]
+        france = _place(
+            "Leipzig",
+            "FR",
+            49.1379318,
+            6.0543551,
+            "Europe/Paris",
+        )
+        france["areas"] = [
+            {
+                "name": "France",
+                "adminLevel": 2,
+                "matched": False,
+            }
+        ]
+        request.return_value = [germany, france]
+
+        result = resolve_origin("Leipzig, Germany")
+
+        self.assertEqual(result.country_code, "DE")
+
+
+    @patch("backend.transitous._request_place_matches")
+    def test_default_unique_area_supports_canonical_local_name(self, request):
+
+        zurich = _place(
+            "Zürich",
+            "CH",
+            47.3744489,
+            8.5410422,
+            "Europe/Zurich",
+        )
+        zurich["areas"] = [
+            {
+                "name": "Zurich",
+                "adminLevel": 8,
+                "default": True,
+                "unique": True,
+            }
+        ]
+        request.return_value = [zurich]
+
+        result = resolve_origin("Zurich")
+
+        self.assertEqual(result.name, "Zürich")
+        self.assertEqual(result.country_code, "CH")
+
+
+    @patch("backend.transitous._request_place_matches")
+    def test_primary_city_beats_same_named_villages(self, request):
+
+        city = _place(
+            "Cologne",
+            "DE",
+            50.938361,
+            6.959974,
+            "Europe/Berlin",
+        )
+        city["areas"] = [
+            {
+                "name": "Cologne",
+                "adminLevel": 6,
+                "default": True,
+                "unique": True,
+            }
+        ]
+        village = _place(
+            "Cologne",
+            "IT",
+            45.5815203,
+            9.9411725,
+            "Europe/Rome",
+            category="village",
+        )
+        village["areas"] = [
+            {
+                "name": "Cologne",
+                "adminLevel": 8,
+                "default": True,
+                "unique": True,
+            }
+        ]
+        request.return_value = [city, village]
+
+        result = resolve_origin("Cologne")
+
+        self.assertEqual(result.country_code, "DE")
+
+
+    @patch("backend.transitous._request_place_matches")
+    def test_primary_city_beats_qualified_same_country_hamlets(self, request):
+
+        city = _place(
+            "Stockholm",
+            "SE",
+            59.3251172,
+            18.0710935,
+            "Europe/Stockholm",
+        )
+        city["areas"] = [
+            {
+                "name": "Sweden",
+                "adminLevel": 2,
+                "matched": True,
+            },
+            {
+                "name": "Stockholm Municipality",
+                "adminLevel": 7,
+                "default": True,
+                "unique": True,
+            },
+        ]
+        hamlet = _place(
+            "Stockholm",
+            "SE",
+            60.5640539,
+            14.663435,
+            "Europe/Stockholm",
+            category="hamlet",
+        )
+        hamlet["areas"] = [
+            {
+                "name": "Sweden",
+                "adminLevel": 2,
+                "matched": True,
+            },
+            {
+                "name": "Leksands kommun",
+                "adminLevel": 7,
+                "default": True,
+                "unique": True,
+            },
+        ]
+        request.return_value = [city, hamlet]
+
+        result = resolve_origin("Stockholm, Sweden")
+
+        self.assertEqual(result.country_code, "SE")
+        self.assertEqual((result.lat, result.lon), (59.3251172, 18.0710935))
+
+
+    @patch("backend.transitous._request_place_matches")
+    def test_weak_fuzzy_and_non_locality_matches_are_not_accepted(
+        self,
+        request,
+    ):
+
+        request.return_value = [
+            _place(
+                "Something Else",
+                "DE",
+                50.0,
+                10.0,
+                "Europe/Berlin",
+            ),
+            _place(
+                "sdgdngfn",
+                "DE",
+                50.0,
+                10.0,
+                "Europe/Berlin",
+                category="office_16",
+            ),
+        ]
+
+        with self.assertRaises(OriginNotFoundError):
+
+            resolve_origin("sdgdngfn")
 
 
     @patch("backend.transitous._request_place_matches")
@@ -162,10 +431,19 @@ class OriginSelectionTests(unittest.TestCase):
             resolve_origin("Berlin")
 
 
-def _place(name, country, lat, lon, timezone):
+def _place(
+    name,
+    country,
+    lat,
+    lon,
+    timezone,
+    *,
+    category="place_6",
+):
 
     return {
         "type": "PLACE",
+        "category": category,
         "name": name,
         "country": country,
         "lat": lat,

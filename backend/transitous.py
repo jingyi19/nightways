@@ -111,6 +111,18 @@ DRESDEN_ORIGIN = ResolvedOrigin(
 )
 
 
+ORIGIN_LOCALITY_CATEGORIES = frozenset(
+    {
+        "city",
+        "hamlet",
+        "locality",
+        "municipality",
+        "town",
+        "village",
+    }
+)
+
+
 def resolve_origin(city_name: str) -> ResolvedOrigin:
     """Resolve one unambiguous European city using Transitous PLACE data."""
 
@@ -130,19 +142,27 @@ def resolve_origin(city_name: str) -> ResolvedOrigin:
     if not candidates:
         raise OriginNotFoundError(f"No European city found for {query!r}.")
 
-    normalized_query = _normalized_city_name(query)
-    exact_candidates = [
+    normalized_name, query_qualifiers = _normalized_origin_query(query)
+    name_candidates = [
         (candidate, match)
         for candidate, match in candidates
-        if _normalized_city_name(candidate.name) == normalized_query
+        if (
+            _normalized_city_name(candidate.name) == normalized_name
+            or _represents_default_locality(match, normalized_name)
+        )
+        and _matches_query_qualifiers(match, query_qualifiers)
     ]
-    plausible_candidates = exact_candidates or candidates
 
-    if len(exact_candidates) > 1:
+    if not name_candidates:
+        raise OriginNotFoundError(f"No European city found for {query!r}.")
+
+    plausible_candidates = name_candidates
+
+    if len(name_candidates) > 1:
         administrative_matches = [
             (candidate, match)
-            for candidate, match in exact_candidates
-            if _has_matching_administrative_area(match, normalized_query)
+            for candidate, match in name_candidates
+            if _represents_default_locality(match, normalized_name)
         ]
         if administrative_matches:
             plausible_candidates = administrative_matches
@@ -202,6 +222,13 @@ def _origin_from_match(match: dict) -> ResolvedOrigin | None:
     if not isinstance(match, dict) or match.get("type") != "PLACE":
         return None
 
+    category = match.get("category")
+    if not isinstance(category, str) or not (
+        category.startswith("place_")
+        or category in ORIGIN_LOCALITY_CATEGORIES
+    ):
+        return None
+
     name = match.get("name")
     country_code = match.get("country")
     timezone = match.get("tz")
@@ -255,18 +282,56 @@ def _normalized_city_name(city_name: str) -> str:
     return " ".join(normalized.split()).casefold()
 
 
-def _has_matching_administrative_area(
+def _normalized_origin_query(city_name: str) -> tuple[str, tuple[str, ...]]:
+    parts = tuple(
+        normalized
+        for part in city_name.split(",")
+        if (normalized := _normalized_city_name(part))
+    )
+    return parts[0], parts[1:]
+
+
+def _matches_query_qualifiers(
+    match: dict,
+    query_qualifiers: tuple[str, ...],
+) -> bool:
+    if not query_qualifiers:
+        return True
+
+    matched_areas = {
+        _normalized_city_name(area_name)
+        for area in match.get("areas") or []
+        if isinstance(area, dict)
+        and area.get("matched") is True
+        and isinstance((area_name := area.get("name")), str)
+        and area_name.strip()
+    }
+    return all(qualifier in matched_areas for qualifier in query_qualifiers)
+
+
+def _represents_default_locality(
     match: dict,
     normalized_city_name: str,
 ) -> bool:
+    category = match.get("category")
+    if not isinstance(category, str) or not category.startswith("place_"):
+        return False
+
     for area in match.get("areas") or []:
         if not isinstance(area, dict):
             continue
 
         area_name = area.get("name")
-        if (
-            isinstance(area_name, str)
-            and _normalized_city_name(area_name) == normalized_city_name
+        if not (
+            area.get("default") is True
+            and area.get("unique") is True
+            and isinstance(area_name, str)
+        ):
+            continue
+
+        normalized_area_name = _normalized_city_name(area_name)
+        if normalized_area_name == normalized_city_name or (
+            normalized_area_name.startswith(f"{normalized_city_name} ")
         ):
             return True
 
