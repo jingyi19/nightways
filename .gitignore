@@ -1,0 +1,3 @@
+# Locally installed GeoPackage data and atomic-download files.
+/data/geo/*.gpkg
+/data/geo/.*.gpkg.*.tmp

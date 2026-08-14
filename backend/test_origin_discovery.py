@@ -148,11 +148,16 @@ class CandidateStopRequestTests(unittest.TestCase):
 class InternalOriginFlowTests(unittest.TestCase):
 
     @patch("backend.discovery.resolve_origin")
-    @patch.dict("os.environ", {"NIGHTWAYS_GISCO_LAU_PATH": ""})
+    @patch("backend.discovery.GiscoLauIndex.from_environment")
     def test_missing_locality_dataset_fails_before_network_discovery(
         self,
+        from_environment,
         resolve,
     ):
+        from_environment.side_effect = LocalityDatasetUnavailableError(
+            "GISCO fixture missing"
+        )
+
         with self.assertRaises(LocalityDatasetUnavailableError):
             get_nightways_for_origin_by_locality(
                 "Berlin",

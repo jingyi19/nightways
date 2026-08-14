@@ -20,7 +20,23 @@ from backend.boundaries import BoundaryGeometry
 
 GISCO_LAU_YEAR = 2024
 GISCO_LAU_PATH_ENV = "NIGHTWAYS_GISCO_LAU_PATH"
+DEFAULT_GISCO_LAU_PATH = Path("data") / "geo" / "lau-2024.gpkg"
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
 _REQUIRED_COLUMNS = ("GISCO_ID", "CNTR_CODE", "LAU_NAME")
+
+
+def configured_gisco_lau_path(environ=None) -> Path:
+    """Return the absolute environment override or project-default path."""
+
+    environment = os.environ if environ is None else environ
+    configured = environment.get(GISCO_LAU_PATH_ENV)
+    if configured:
+        path = Path(configured).expanduser()
+        if not path.is_absolute():
+            path = _PROJECT_ROOT / path
+    else:
+        path = _PROJECT_ROOT / DEFAULT_GISCO_LAU_PATH
+    return path.resolve()
 
 
 class LocalityResolutionError(RuntimeError):
@@ -87,7 +103,9 @@ class GiscoLauIndex:
         self.path = Path(path).expanduser().resolve()
         if not self.path.is_file():
             raise LocalityDatasetUnavailableError(
-                f"GISCO LAU GeoPackage not found: {self.path}"
+                f"GISCO LAU {dataset_year} GeoPackage not found: "
+                f"{self.path}. Run 'python backend/setup_gisco.py' or set "
+                f"{GISCO_LAU_PATH_ENV}."
             )
         if isinstance(dataset_year, bool) or not isinstance(dataset_year, int):
             raise ValueError("dataset_year must be an integer")
@@ -114,16 +132,15 @@ class GiscoLauIndex:
         cls,
         dataset_year: int = GISCO_LAU_YEAR,
         table_name: str | None = None,
+        environ=None,
     ) -> "GiscoLauIndex":
-        """Open the GeoPackage configured by NIGHTWAYS_GISCO_LAU_PATH."""
+        """Open the environment override or project-default GeoPackage."""
 
-        configured_path = os.environ.get(GISCO_LAU_PATH_ENV)
-        if not configured_path:
-            raise LocalityDatasetUnavailableError(
-                f"Set {GISCO_LAU_PATH_ENV} to the local GISCO LAU "
-                f"{dataset_year} GeoPackage."
-            )
-        return cls(configured_path, dataset_year, table_name)
+        return cls(
+            configured_gisco_lau_path(environ),
+            dataset_year,
+            table_name,
+        )
 
     @property
     def supported_country_codes(self) -> frozenset[str]:

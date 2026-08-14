@@ -6,11 +6,47 @@ from datetime import date
 from pathlib import Path
 
 from backend.localities import (
+    DEFAULT_GISCO_LAU_PATH,
     DestinationLocality,
+    GISCO_LAU_PATH_ENV,
     GiscoLauIndex,
+    LocalityDatasetUnavailableError,
     LocalityResolutionStatus,
     build_locality_response,
+    configured_gisco_lau_path,
 )
+
+
+class GiscoPathConfigurationTests(unittest.TestCase):
+
+    def test_default_path_is_relative_to_project_root(self):
+        expected = (
+            Path(__file__).resolve().parents[1] / DEFAULT_GISCO_LAU_PATH
+        ).resolve()
+
+        self.assertEqual(configured_gisco_lau_path({}), expected)
+
+    def test_environment_path_overrides_default(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            override = Path(temporary_directory) / "custom.gpkg"
+
+            result = configured_gisco_lau_path(
+                {GISCO_LAU_PATH_ENV: str(override)}
+            )
+
+        self.assertEqual(result, override.resolve())
+
+    def test_missing_configured_dataset_has_dedicated_error(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            missing = Path(temporary_directory) / "missing.gpkg"
+
+            with self.assertRaisesRegex(
+                LocalityDatasetUnavailableError,
+                "python backend/setup_gisco.py",
+            ):
+                GiscoLauIndex.from_environment(
+                    environ={GISCO_LAU_PATH_ENV: str(missing)}
+                )
 
 
 class GiscoLauIndexTests(unittest.TestCase):
@@ -258,22 +294,35 @@ def _create_fixture(path: Path) -> None:
             z TINYINT,
             m TINYINT
         );
-        CREATE TABLE lau (
+        CREATE TABLE LAU_RG_01M_2024_4326 (
             fid INTEGER PRIMARY KEY,
             GISCO_ID TEXT NOT NULL,
             CNTR_CODE TEXT NOT NULL,
             LAU_NAME TEXT NOT NULL,
+            YEAR INTEGER NOT NULL,
             geom BLOB NOT NULL
         );
-        CREATE VIRTUAL TABLE rtree_lau_geom USING rtree(
+        CREATE VIRTUAL TABLE rtree_LAU_RG_01M_2024_4326_geom USING rtree(
             id, minx, maxx, miny, maxy
         );
         INSERT INTO gpkg_contents (
             table_name, data_type, identifier, srs_id
-        ) VALUES ('lau', 'features', 'lau', 4326);
+        ) VALUES (
+            'LAU_RG_01M_2024_4326',
+            'features',
+            'LAU_RG_01M_2024_4326',
+            4326
+        );
         INSERT INTO gpkg_geometry_columns (
             table_name, column_name, geometry_type_name, srs_id, z, m
-        ) VALUES ('lau', 'geom', 'MULTIPOLYGON', 4326, 0, 0);
+        ) VALUES (
+            'LAU_RG_01M_2024_4326',
+            'geom',
+            'MULTIPOLYGON',
+            4326,
+            0,
+            0
+        );
         """
     )
 
@@ -281,14 +330,17 @@ def _create_fixture(path: Path) -> None:
         blob, bounds = geometry
         connection.execute(
             """
-            INSERT INTO lau (fid, GISCO_ID, CNTR_CODE, LAU_NAME, geom)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO LAU_RG_01M_2024_4326 (
+                fid, GISCO_ID, CNTR_CODE, LAU_NAME, YEAR, geom
+            ) VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (feature_id, gisco_id, country, name, blob),
+            (feature_id, gisco_id, country, name, 2024, blob),
         )
         connection.execute(
             """
-            INSERT INTO rtree_lau_geom (id, minx, maxx, miny, maxy)
+            INSERT INTO rtree_LAU_RG_01M_2024_4326_geom (
+                id, minx, maxx, miny, maxy
+            )
             VALUES (?, ?, ?, ?, ?)
             """,
             (feature_id, *bounds),
