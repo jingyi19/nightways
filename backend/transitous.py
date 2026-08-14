@@ -546,6 +546,48 @@ def _extract_trip(
     origin_timezone: str,
 ) -> dict | None:
 
+    qualified_trip = _extract_qualified_trip(
+        stop_time,
+        travel_date,
+        target_arrival_date,
+        origin_stop_matches,
+        origin_timezone,
+    )
+
+    if qualified_trip is None:
+
+        return None
+
+
+    destinations = defaultdict(list)
+
+    for arrival in qualified_trip.pop("arrivals"):
+
+        arrival_stop = arrival["_source_stop"]
+        destination_name = catalog.lookup(arrival_stop)
+        destinations[destination_name].append(
+            {
+                "station": arrival_stop.get("name") or destination_name[0],
+                "arrival": arrival["arrival"],
+                "lat": arrival["lat"],
+                "lon": arrival["lon"],
+            }
+        )
+
+
+    qualified_trip["destinations"] = dict(destinations)
+    return qualified_trip
+
+
+def _extract_qualified_trip(
+    stop_time: dict,
+    travel_date: date,
+    target_arrival_date: date,
+    origin_stop_matches,
+    origin_timezone: str,
+) -> dict | None:
+    """Return one trip with qualified, but geographically ungrouped, arrivals."""
+
     trip_id = stop_time.get("tripId")
     motis_mode = stop_time.get("mode")
     origin_stop = stop_time.get("place") or {}
@@ -586,7 +628,7 @@ def _extract_trip(
         return None
 
 
-    destinations = defaultdict(list)
+    arrivals = []
 
     for arrival_stop in stop_time.get("nextStops") or []:
 
@@ -621,18 +663,21 @@ def _extract_trip(
             continue
 
 
-        destination_name = catalog.lookup(arrival_stop)
-        destinations[destination_name].append(
+        arrivals.append(
             {
-                "station": arrival_stop.get("name") or destination_name[0],
+                "station": (
+                    arrival_stop.get("name") or "Unknown arrival station"
+                ),
                 "arrival": arrival.isoformat(timespec="seconds"),
                 "lat": arrival_stop.get("lat"),
                 "lon": arrival_stop.get("lon"),
+                "country_code": _stop_country_code(arrival_stop),
+                "_source_stop": arrival_stop,
             }
         )
 
 
-    if not destinations:
+    if not arrivals:
 
         return None
 
@@ -659,8 +704,70 @@ def _extract_trip(
         "operator": stop_time.get("agencyName") or "Unknown operator",
         "mode": MODE_FOR_FRONTEND[motis_mode],
         "departure": departure.isoformat(timespec="seconds"),
-        "destinations": dict(destinations),
+        "arrivals": arrivals,
     }
+
+
+def _collect_qualified_trips(
+    response: dict,
+    travel_date: date,
+    origin_stop_matches,
+    origin_timezone: str,
+) -> dict:
+    """Collect and deduplicate trips before geographic destination grouping."""
+
+    target_arrival_date = travel_date + timedelta(days=1)
+    trips = {}
+
+    for stop_time in response.get("stopTimes", []):
+
+        trip = _extract_qualified_trip(
+            stop_time,
+            travel_date,
+            target_arrival_date,
+            origin_stop_matches,
+            origin_timezone,
+        )
+
+        if trip is None:
+
+            continue
+
+
+        existing_trip = trips.get(trip["trip_id"])
+
+        if existing_trip is None:
+
+            trips[trip["trip_id"]] = trip
+
+        else:
+
+            _merge_qualified_trip(existing_trip, trip)
+
+
+    return trips
+
+
+def _merge_qualified_trip(existing_trip: dict, incoming_trip: dict) -> None:
+
+    if incoming_trip["departure"] < existing_trip["departure"]:
+
+        existing_trip["departure"] = incoming_trip["departure"]
+
+
+    existing_keys = {
+        _qualified_arrival_key(arrival)
+        for arrival in existing_trip["arrivals"]
+    }
+
+    for arrival in incoming_trip["arrivals"]:
+
+        key = _qualified_arrival_key(arrival)
+
+        if key not in existing_keys:
+
+            existing_trip["arrivals"].append(arrival)
+            existing_keys.add(key)
 
 
 def _merge_trip(existing_trip: dict, incoming_trip: dict) -> None:
@@ -798,6 +905,47 @@ def _stop_key(stop: dict):
         stop.get("lat"),
         stop.get("lon"),
     )
+
+
+def _qualified_arrival_key(arrival: dict):
+
+    return (
+        arrival.get("station"),
+        arrival.get("arrival"),
+        arrival.get("lat"),
+        arrival.get("lon"),
+    )
+
+
+def _stop_country_code(stop: dict) -> str | None:
+
+    values = [
+        stop.get("countryCode"),
+        stop.get("country_code"),
+        stop.get("country"),
+    ]
+
+    for area in stop.get("areas") or []:
+
+        if isinstance(area, dict):
+
+            values.extend(
+                (area.get("countryCode"), area.get("country_code"))
+            )
+
+
+    for value in values:
+
+        if isinstance(value, str):
+
+            normalized = value.strip().upper()
+
+            if len(normalized) == 2 and normalized.isalpha():
+
+                return normalized
+
+
+    return None
 
 
 def _station_key(stop: dict):

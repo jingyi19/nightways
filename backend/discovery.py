@@ -16,6 +16,7 @@ from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from backend.boundaries import OriginBoundary, resolve_origin_boundary
+from backend.localities import GiscoLauIndex, build_locality_response
 from backend.transitous import (
     DEPARTURE_START,
     DestinationCatalog,
@@ -25,6 +26,7 @@ from backend.transitous import (
     ResolvedOrigin,
     TransitousError,
     _build_nightways_response,
+    _collect_qualified_trips,
     resolve_origin,
 )
 
@@ -86,6 +88,51 @@ def get_nightways_for_origin(
         catalog,
         lambda stop: _stop_is_inside(boundary, stop),
         origin.timezone,
+    )
+
+
+def get_nightways_for_origin_by_locality(
+    city_name: str,
+    travel_date: date,
+    locality_index: GiscoLauIndex | None = None,
+    candidate_stop_limit: int = MAX_CANDIDATE_STOPS,
+) -> dict:
+    """Build the internal GISCO-grouped response for an arbitrary origin.
+
+    A caller can reuse an already-open index. Otherwise the local GeoPackage is
+    opened from NIGHTWAYS_GISCO_LAU_PATH for this operation. This function is
+    intentionally not wired to the public Dresden API.
+    """
+
+    if locality_index is None:
+        with GiscoLauIndex.from_environment() as configured_index:
+            return get_nightways_for_origin_by_locality(
+                city_name,
+                travel_date,
+                configured_index,
+                candidate_stop_limit,
+            )
+
+    origin = resolve_origin(city_name)
+    boundary = resolve_origin_boundary(origin)
+    response = request_origin_departures(
+        origin,
+        boundary,
+        travel_date,
+        candidate_stop_limit,
+    )
+    trips = _collect_qualified_trips(
+        response,
+        travel_date,
+        lambda stop: _stop_is_inside(boundary, stop),
+        origin.timezone,
+    )
+
+    return build_locality_response(
+        origin.name,
+        travel_date,
+        trips.values(),
+        locality_index,
     )
 
 
