@@ -4,20 +4,71 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
-from backend.transitous import TransitousError, get_nightways_for_dresden
+from backend.boundaries import (
+    AmbiguousBoundaryError,
+    BoundaryNotFoundError,
+    BoundaryServiceError,
+)
+from backend.discovery import (
+    CandidateStopLimitError,
+    get_nightways_for_origin_by_locality,
+)
+from backend.localities import (
+    LocalityDatasetError,
+    LocalityDatasetUnavailableError,
+    LocalityResolutionError,
+)
+from backend.transitous import (
+    AmbiguousOriginError,
+    OriginNotFoundError,
+    OriginResolutionError,
+    TransitousError,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 INDEX_FILE = PROJECT_ROOT / "index.html"
 STYLE_FILE = PROJECT_ROOT / "style.css"
 SCRIPT_FILE = PROJECT_ROOT / "app.js"
-REFERENCE_DATA_FILE = (
-    PROJECT_ROOT
-    / "data"
-    / "nightways_dresden_2026-08-14.json"
-)
 
-SUPPORTED_ORIGIN = "Dresden"
+# English names for the countries present in GISCO LAU 2024 and supported by
+# Nightways V1. Keep legacy API spellings stable at this public boundary.
+GISCO_COUNTRY_NAMES = {
+    "AL": "Albania",
+    "AT": "Austria",
+    "BE": "Belgium",
+    "BG": "Bulgaria",
+    "CH": "Switzerland",
+    "CY": "Cyprus",
+    "CZ": "Czechia",
+    "DE": "Germany",
+    "DK": "Denmark",
+    "EE": "Estonia",
+    "EL": "Greece",
+    "ES": "Spain",
+    "FI": "Finland",
+    "FR": "France",
+    "HR": "Croatia",
+    "HU": "Hungary",
+    "IE": "Ireland",
+    "IS": "Iceland",
+    "IT": "Italy",
+    "LI": "Liechtenstein",
+    "LT": "Lithuania",
+    "LU": "Luxembourg",
+    "LV": "Latvia",
+    "MK": "North Macedonia",
+    "MT": "Malta",
+    "NL": "Netherlands",
+    "NO": "Norway",
+    "PL": "Poland",
+    "PT": "Portugal",
+    "RO": "Romania",
+    "RS": "Serbia",
+    "SE": "Sweden",
+    "SI": "Slovenia",
+    "SK": "Slovakia",
+}
 
 
 app = FastAPI(
@@ -46,26 +97,6 @@ def get_javascript():
 
 @app.get("/api/nightways")
 def get_nightways(origin: str, date: str):
-
-    is_supported_origin = (
-        origin.strip().casefold()
-        == SUPPORTED_ORIGIN.casefold()
-    )
-
-    if not is_supported_origin:
-
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "message": (
-                    "This prototype currently supports only "
-                    "Dresden as the origin."
-                ),
-                "supported_origin": SUPPORTED_ORIGIN
-            }
-        )
-
-
     try:
 
         travel_date = calendar_date.fromisoformat(date)
@@ -85,17 +116,75 @@ def get_nightways(origin: str, date: str):
 
 
     try:
-
-        return get_nightways_for_dresden(
+        response = get_nightways_for_origin_by_locality(
+            origin,
             travel_date,
-            REFERENCE_DATA_FILE
         )
+        return _public_response(response)
+
+    except OriginNotFoundError as error:
+        raise _api_error(error, 400, "origin_not_found") from error
+
+    except AmbiguousOriginError as error:
+        raise _api_error(error, 409, "origin_ambiguous") from error
+
+    except OriginResolutionError as error:
+        raise _api_error(error, 400, "invalid_origin") from error
+
+    except BoundaryNotFoundError as error:
+        raise _api_error(error, 422, "origin_boundary_not_found") from error
+
+    except AmbiguousBoundaryError as error:
+        raise _api_error(error, 409, "origin_boundary_ambiguous") from error
+
+    except BoundaryServiceError as error:
+        raise _api_error(error, 502, "origin_boundary_service_failed") from error
+
+    except CandidateStopLimitError as error:
+        raise _api_error(
+            error,
+            503,
+            "origin_candidate_limit_exceeded",
+            candidate_count=error.candidate_count,
+            limit=error.limit,
+        ) from error
+
+    except LocalityDatasetUnavailableError as error:
+        raise _api_error(error, 503, "gisco_dataset_unavailable") from error
+
+    except LocalityDatasetError as error:
+        raise _api_error(error, 503, "gisco_dataset_invalid") from error
+
+    except LocalityResolutionError as error:
+        raise _api_error(error, 503, "locality_resolution_failed") from error
 
     except TransitousError as error:
+        raise _api_error(error, 502, "transitous_failed") from error
 
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "message": str(error)
-            }
-        ) from error
+
+def _api_error(error: Exception, status_code: int, code: str, **details):
+    payload = {
+        "message": str(error),
+        "code": code,
+    }
+    payload.update(details)
+    return HTTPException(status_code=status_code, detail=payload)
+
+
+def _public_response(response: dict) -> dict:
+    """Retain the legacy country field while exposing GISCO metadata."""
+
+    public_response = dict(response)
+    public_response["destinations"] = []
+    for destination in response.get("destinations", []):
+        public_destination = dict(destination)
+        country_code = destination.get("country_code")
+        try:
+            public_destination["country"] = GISCO_COUNTRY_NAMES[country_code]
+        except (KeyError, TypeError) as error:
+            raise LocalityDatasetError(
+                "No English country name is configured for GISCO country "
+                f"code {country_code!r}."
+            ) from error
+        public_response["destinations"].append(public_destination)
+    return public_response
