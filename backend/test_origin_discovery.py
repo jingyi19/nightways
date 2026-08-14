@@ -238,7 +238,17 @@ class InternalOriginFlowTests(unittest.TestCase):
             locality_index,
         )
 
-        self.assertEqual(result, expected)
+        self.assertEqual(
+            result,
+            {
+                **expected,
+                "origin_coordinates": {
+                    "latitude": origin.lat,
+                    "longitude": origin.lon,
+                },
+            },
+        )
+        self.assertEqual(result["origin"], "Berlin")
         request_departures.assert_called_once_with(
             origin,
             boundary,

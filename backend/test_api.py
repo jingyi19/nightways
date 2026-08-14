@@ -20,6 +20,13 @@ class NightwaysApiTests(unittest.TestCase):
 
         pipeline.assert_called_once_with("Dresden", date(2026, 8, 14))
         self.assertEqual(result["origin"], "Dresden")
+        self.assertEqual(
+            result["origin_coordinates"],
+            {
+                "latitude": 51.0504,
+                "longitude": 13.7373,
+            },
+        )
         self.assertEqual(result["destination_count"], 60)
         self.assertEqual(result["destinations"][0]["country"], "Germany")
         self.assertEqual(result["destinations"][0]["country_code"], "DE")
@@ -62,6 +69,13 @@ class NightwaysApiTests(unittest.TestCase):
 
         pipeline.assert_called_once_with("Berlin", date(2026, 8, 14))
         self.assertEqual(result["origin"], "Berlin")
+        self.assertEqual(
+            result["origin_coordinates"],
+            {
+                "latitude": 52.52,
+                "longitude": 13.405,
+            },
+        )
         self.assertEqual(result["destination_count"], 120)
 
     @patch("backend.main.get_nightways_for_origin_by_locality")
@@ -152,8 +166,16 @@ class NightwaysApiTests(unittest.TestCase):
 
 
 def _response(origin: str, destination_count: int) -> dict:
+    latitude, longitude = {
+        "Berlin": (52.52, 13.405),
+        "Dresden": (51.0504, 13.7373),
+    }[origin]
     return {
         "origin": origin,
+        "origin_coordinates": {
+            "latitude": latitude,
+            "longitude": longitude,
+        },
         "date": "2026-08-14",
         "qualifying_trip_count": 18,
         "raw_arrival_event_count": 82,

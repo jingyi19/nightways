@@ -128,12 +128,19 @@ def get_nightways_for_origin_by_locality(
         origin.timezone,
     )
 
-    return build_locality_response(
+    result = build_locality_response(
         origin.name,
         travel_date,
         trips.values(),
         locality_index,
     )
+    return {
+        **result,
+        "origin_coordinates": {
+            "latitude": origin.lat,
+            "longitude": origin.lon,
+        },
+    }
 
 
 def request_origin_departures(
