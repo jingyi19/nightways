@@ -17,6 +17,9 @@ from backend.localities import (
 )
 
 
+GISCO_FIXTURE_TABLE = "LAU_RG_01M_2024_4326.gpkg"
+
+
 class GiscoPathConfigurationTests(unittest.TestCase):
 
     def test_default_path_is_relative_to_project_root(self):
@@ -273,7 +276,7 @@ def _create_fixture(path: Path) -> None:
 
     connection = sqlite3.connect(path)
     connection.executescript(
-        """
+        f"""
         CREATE TABLE gpkg_contents (
             table_name TEXT PRIMARY KEY,
             data_type TEXT NOT NULL,
@@ -294,7 +297,7 @@ def _create_fixture(path: Path) -> None:
             z TINYINT,
             m TINYINT
         );
-        CREATE TABLE LAU_RG_01M_2024_4326 (
+        CREATE TABLE "{GISCO_FIXTURE_TABLE}" (
             fid INTEGER PRIMARY KEY,
             GISCO_ID TEXT NOT NULL,
             CNTR_CODE TEXT NOT NULL,
@@ -302,21 +305,21 @@ def _create_fixture(path: Path) -> None:
             YEAR INTEGER NOT NULL,
             geom BLOB NOT NULL
         );
-        CREATE VIRTUAL TABLE rtree_LAU_RG_01M_2024_4326_geom USING rtree(
+        CREATE VIRTUAL TABLE "rtree_{GISCO_FIXTURE_TABLE}_geom" USING rtree(
             id, minx, maxx, miny, maxy
         );
         INSERT INTO gpkg_contents (
             table_name, data_type, identifier, srs_id
         ) VALUES (
-            'LAU_RG_01M_2024_4326',
+            '{GISCO_FIXTURE_TABLE}',
             'features',
-            'LAU_RG_01M_2024_4326',
+            '{GISCO_FIXTURE_TABLE}',
             4326
         );
         INSERT INTO gpkg_geometry_columns (
             table_name, column_name, geometry_type_name, srs_id, z, m
         ) VALUES (
-            'LAU_RG_01M_2024_4326',
+            '{GISCO_FIXTURE_TABLE}',
             'geom',
             'MULTIPOLYGON',
             4326,
@@ -329,16 +332,16 @@ def _create_fixture(path: Path) -> None:
     for feature_id, (gisco_id, country, name, geometry) in enumerate(features, 1):
         blob, bounds = geometry
         connection.execute(
-            """
-            INSERT INTO LAU_RG_01M_2024_4326 (
+            f"""
+            INSERT INTO "{GISCO_FIXTURE_TABLE}" (
                 fid, GISCO_ID, CNTR_CODE, LAU_NAME, YEAR, geom
             ) VALUES (?, ?, ?, ?, ?, ?)
             """,
             (feature_id, gisco_id, country, name, 2024, blob),
         )
         connection.execute(
-            """
-            INSERT INTO rtree_LAU_RG_01M_2024_4326_geom (
+            f"""
+            INSERT INTO "rtree_{GISCO_FIXTURE_TABLE}_geom" (
                 id, minx, maxx, miny, maxy
             )
             VALUES (?, ?, ?, ?, ?)

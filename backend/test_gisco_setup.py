@@ -4,14 +4,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from backend.localities import LocalityDatasetError
+from backend.localities import GiscoLauIndex, LocalityDatasetError
 from backend.setup_gisco import (
     GISCO_SETUP_USER_AGENT,
     GiscoSetupError,
     install_gisco_dataset,
     validate_gisco_dataset,
 )
-from backend.test_localities import _create_fixture
+from backend.test_localities import GISCO_FIXTURE_TABLE, _create_fixture
 
 
 class GiscoDatasetValidationTests(unittest.TestCase):
@@ -36,17 +36,40 @@ class GiscoDatasetValidationTests(unittest.TestCase):
 
         self.assertGreater(size_bytes, 0)
 
+    def test_current_gisco_internal_table_name_is_discovered(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "current-name.gpkg"
+            _create_fixture(path)
+
+            validate_gisco_dataset(path, minimum_size_bytes=0)
+            with GiscoLauIndex(path) as index:
+                discovered_table = index.table_name
+
+        self.assertEqual(discovered_table, GISCO_FIXTURE_TABLE)
+
     def test_fixture_without_year_field_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             path = Path(temporary_directory) / "missing-year.gpkg"
             _create_fixture(path)
             connection = sqlite3.connect(path)
             connection.execute(
-                "ALTER TABLE LAU_RG_01M_2024_4326 DROP COLUMN YEAR"
+                f'ALTER TABLE "{GISCO_FIXTURE_TABLE}" DROP COLUMN YEAR'
             )
             connection.close()
 
             with self.assertRaisesRegex(LocalityDatasetError, "YEAR"):
+                validate_gisco_dataset(path, minimum_size_bytes=0)
+
+    def test_multiple_appropriate_feature_layers_are_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "multiple.gpkg"
+            _create_fixture(path)
+            _add_second_feature_layer(path)
+
+            with self.assertRaisesRegex(
+                LocalityDatasetError,
+                "exactly one appropriate feature layer; found 2",
+            ):
                 validate_gisco_dataset(path, minimum_size_bytes=0)
 
 
@@ -136,6 +159,36 @@ class _MockResponse(io.BytesIO):
                 len(payload) if declared_size is None else declared_size
             )
         }
+
+
+def _add_second_feature_layer(path: Path) -> None:
+    table_name = "second_lau_layer"
+    rtree_name = f"rtree_{table_name}_geom"
+    source_rtree = f"rtree_{GISCO_FIXTURE_TABLE}_geom"
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        f"""
+        CREATE TABLE "{table_name}" AS
+            SELECT * FROM "{GISCO_FIXTURE_TABLE}";
+        CREATE VIRTUAL TABLE "{rtree_name}" USING rtree(
+            id, minx, maxx, miny, maxy
+        );
+        INSERT INTO "{rtree_name}"
+            SELECT * FROM "{source_rtree}";
+        INSERT INTO gpkg_contents (
+            table_name, data_type, identifier, srs_id
+        ) VALUES (
+            '{table_name}', 'features', '{table_name}', 4326
+        );
+        INSERT INTO gpkg_geometry_columns (
+            table_name, column_name, geometry_type_name, srs_id, z, m
+        ) VALUES (
+            '{table_name}', 'geom', 'MULTIPOLYGON', 4326, 0, 0
+        );
+        """
+    )
+    connection.commit()
+    connection.close()
 
 
 if __name__ == "__main__":

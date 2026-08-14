@@ -30,7 +30,6 @@ GISCO_LAU_DOWNLOAD_URL = (
     "https://gisco-services.ec.europa.eu/distribution/v2/lau/gpkg/"
     "LAU_RG_01M_2024_4326.gpkg"
 )
-GISCO_LAU_TABLE = "LAU_RG_01M_2024_4326"
 GISCO_LAU_MINIMUM_BYTES = 10 * 1024 * 1024
 GISCO_SETUP_USER_AGENT = "Nightways/0.1 (GISCO LAU setup)"
 GISCO_REQUIRED_COLUMNS = ("GISCO_ID", "CNTR_CODE", "LAU_NAME", "YEAR")
@@ -84,42 +83,13 @@ def validate_gisco_dataset(
         ) from error
 
     try:
-        table = connection.execute(
-            """
-            SELECT name FROM sqlite_master
-            WHERE type = 'table' AND name = ?
-            """,
-            (GISCO_LAU_TABLE,),
-        ).fetchone()
-        if table is None:
-            raise LocalityDatasetError(
-                f"GISCO LAU GeoPackage has no {GISCO_LAU_TABLE!r} layer."
-            )
-
-        columns = connection.execute(
-            f'PRAGMA table_info("{GISCO_LAU_TABLE}")'
-        ).fetchall()
-        columns_by_case = {
-            str(column["name"]).casefold(): str(column["name"])
-            for column in columns
-        }
-        missing = [
-            column
-            for column in GISCO_REQUIRED_COLUMNS
-            if column.casefold() not in columns_by_case
-        ]
-        if missing:
-            raise LocalityDatasetError(
-                "GISCO LAU layer is missing required fields: "
-                + ", ".join(missing)
-            )
-
+        table_name, columns_by_case = _discover_lau_layer(connection)
         year_column = columns_by_case["year"]
         years = {
             str(row["dataset_year"]).strip()
             for row in connection.execute(
-                f'SELECT DISTINCT "{year_column}" AS dataset_year '
-                f'FROM "{GISCO_LAU_TABLE}"'
+                f"SELECT DISTINCT {_quote_identifier(year_column)} "
+                f"AS dataset_year FROM {_quote_identifier(table_name)}"
             ).fetchall()
         }
         if years != {str(GISCO_LAU_YEAR)}:
@@ -136,11 +106,102 @@ def validate_gisco_dataset(
     with GiscoLauIndex(
         dataset_path,
         dataset_year=GISCO_LAU_YEAR,
-        table_name=GISCO_LAU_TABLE,
+        table_name=table_name,
     ):
         pass
 
     return size_bytes
+
+
+def _discover_lau_layer(
+    connection: sqlite3.Connection,
+) -> tuple[str, dict[str, str]]:
+    """Discover exactly one indexed LAU feature layer from GeoPackage metadata."""
+
+    rows = connection.execute(
+        """
+        SELECT contents.table_name,
+               contents.srs_id AS contents_srs_id,
+               geometry.column_name,
+               geometry.geometry_type_name,
+               geometry.srs_id AS geometry_srs_id
+        FROM gpkg_contents AS contents
+        LEFT JOIN gpkg_geometry_columns AS geometry
+          ON geometry.table_name = contents.table_name
+        WHERE contents.data_type = 'features'
+        ORDER BY contents.table_name
+        """
+    ).fetchall()
+
+    appropriate = []
+    rejected = []
+    for row in rows:
+        table_name = str(row["table_name"])
+        issues = []
+        geometry_column = row["column_name"]
+        geometry_type = str(row["geometry_type_name"] or "").upper()
+
+        if geometry_column is None:
+            issues.append("missing gpkg_geometry_columns metadata")
+        if row["contents_srs_id"] != 4326 or row["geometry_srs_id"] != 4326:
+            issues.append("not EPSG:4326")
+        if geometry_type not in {"POLYGON", "MULTIPOLYGON"}:
+            issues.append("geometry is not Polygon/MultiPolygon")
+
+        columns = connection.execute(
+            f"PRAGMA table_info({_quote_identifier(table_name)})"
+        ).fetchall()
+        columns_by_case = {
+            str(column["name"]).casefold(): str(column["name"])
+            for column in columns
+        }
+        missing = [
+            column
+            for column in GISCO_REQUIRED_COLUMNS
+            if column.casefold() not in columns_by_case
+        ]
+        if missing:
+            issues.append("missing required fields: " + ", ".join(missing))
+
+        if geometry_column is not None:
+            rtree_table = f"rtree_{table_name}_{geometry_column}"
+            if not _table_exists(connection, rtree_table):
+                issues.append("missing RTree spatial index")
+
+        if issues:
+            rejected.append(f"{table_name!r}: " + ", ".join(issues))
+        else:
+            appropriate.append((table_name, columns_by_case))
+
+    if len(appropriate) != 1:
+        names = ", ".join(repr(item[0]) for item in appropriate) or "none"
+        details = "; ".join(rejected)
+        message = (
+            "GISCO LAU GeoPackage must contain exactly one appropriate "
+            f"feature layer; found {len(appropriate)} ({names})."
+        )
+        if details:
+            message += " Rejected feature layers: " + details
+        raise LocalityDatasetError(message)
+
+    return appropriate[0]
+
+
+def _table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
+    return (
+        connection.execute(
+            """
+            SELECT 1 FROM sqlite_master
+            WHERE type IN ('table', 'view') AND name = ?
+            """,
+            (table_name,),
+        ).fetchone()
+        is not None
+    )
+
+
+def _quote_identifier(identifier: str) -> str:
+    return '"' + identifier.replace('"', '""') + '"'
 
 
 def install_gisco_dataset(
