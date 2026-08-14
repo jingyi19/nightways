@@ -1,6 +1,7 @@
 const API_ENDPOINT =
     "/api/nightways";
 
+const resultsHeading = document.getElementById("results-heading");
 const destinationCount = document.getElementById("destination-count");
 const destinationList = document.getElementById("destination-list");
 const searchButton = document.getElementById("search-button");
@@ -18,17 +19,20 @@ const TRAIN_SERVICE_MODES = new Set([
 
 let activeMode = "ALL";
 let nightwaysData = null;
+let currentSearchController = null;
 
 
 // --------------------------------------------------
 // MAP
 // --------------------------------------------------
 
-const DRESDEN_COORDINATES = [51.0504, 13.7373];
+const DEFAULT_MAP_CENTER = [50.5, 10.5];
+const DEFAULT_MAP_ZOOM = 4;
+const ORIGIN_ONLY_ZOOM = 9;
 
 const map = L.map("map").setView(
-    [50.5, 10.5],
-    4
+    DEFAULT_MAP_CENTER,
+    DEFAULT_MAP_ZOOM
 );
 
 L.tileLayer(
@@ -182,22 +186,8 @@ previewControl.addTo(map);
 
 
 // --------------------------------------------------
-// DRESDEN ORIGIN
+// ORIGIN MARKER
 // --------------------------------------------------
-
-// Soft red outer ring
-L.circleMarker(
-    DRESDEN_COORDINATES,
-    {
-        radius: 13,
-        color: "#d94a5a",
-        weight: 1,
-        opacity: 0.35,
-        fillColor: "#d94a5a",
-        fillOpacity: 0.08
-    }
-).addTo(map);
-
 
 // Teardrop origin marker
 const originIcon = L.divIcon({
@@ -213,16 +203,48 @@ const originIcon = L.divIcon({
 });
 
 
-L.marker(
-    DRESDEN_COORDINATES,
-    {
-        icon: originIcon
-    }
-)
-    .addTo(map)
-    .bindPopup(
-        "<strong>Dresden</strong><br>Starting point"
+const originMarkers =
+    L.layerGroup().addTo(map);
+
+
+function renderOriginMarker(originName, coordinates) {
+
+    L.circleMarker(
+        coordinates,
+        {
+            radius: 13,
+            color: "#d94a5a",
+            weight: 1,
+            opacity: 0.35,
+            fillColor: "#d94a5a",
+            fillOpacity: 0.08
+        }
+    ).addTo(originMarkers);
+
+
+    const popupContent =
+        document.createElement("div");
+
+    const popupOrigin =
+        document.createElement("strong");
+
+    popupOrigin.textContent = originName;
+    popupContent.append(
+        popupOrigin,
+        document.createElement("br"),
+        "Starting point"
     );
+
+
+    L.marker(
+        coordinates,
+        {
+            icon: originIcon
+        }
+    )
+        .addTo(originMarkers)
+        .bindPopup(popupContent);
+}
 
 
 // Destination marker layer
@@ -510,7 +532,12 @@ function resetDestinationMarker(marker) {
 // SERVICE DETAILS
 // --------------------------------------------------
 
-function createServiceHTML(service) {
+function createServiceHTML(service, originName) {
+
+    const encodedOrigin =
+        document.createElement("span");
+
+    encodedOrigin.textContent = originName;
 
     const stopsHTML = service.stops
         .map(stop => `
@@ -551,7 +578,7 @@ function createServiceHTML(service) {
                 </span>
 
                 <span>
-                    from Dresden
+                    from ${encodedOrigin.innerHTML}
                 </span>
 
             </div>
@@ -571,7 +598,7 @@ function createServiceHTML(service) {
 // OPEN / CLOSE DESTINATION CARD
 // --------------------------------------------------
 
-function openDestination(card, destination) {
+function openDestination(card, destination, originName) {
 
     const existingDetails =
         card.querySelector(
@@ -600,7 +627,12 @@ function openDestination(card, destination) {
 
     const servicesHTML =
         destination.services
-            .map(createServiceHTML)
+            .map(service =>
+                createServiceHTML(
+                    service,
+                    originName
+                )
+            )
             .join("");
 
 
@@ -623,7 +655,7 @@ function openDestination(card, destination) {
 // MAKE SURE DESTINATION IS OPEN
 // --------------------------------------------------
 
-function ensureDestinationOpen(card, destination) {
+function ensureDestinationOpen(card, destination, originName) {
 
     const existingDetails =
         card.querySelector(
@@ -635,7 +667,8 @@ function ensureDestinationOpen(card, destination) {
 
         openDestination(
             card,
-            destination
+            destination,
+            originName
         );
     }
 }
@@ -656,7 +689,61 @@ function getNightwaysRequestUrl() {
 }
 
 
+const GENERIC_LOAD_ERROR =
+    "Could not load overnight destinations.";
+
+
+class NightwaysApiError extends Error {}
+
+
+async function getNightwaysErrorMessage(response) {
+
+    try {
+
+        const payload = await response.json();
+        const message = payload?.detail?.message;
+
+        if (
+            typeof message === "string" &&
+            message.trim()
+        ) {
+            return message.trim();
+        }
+
+    } catch (error) {
+
+        return GENERIC_LOAD_ERROR;
+    }
+
+    return GENERIC_LOAD_ERROR;
+}
+
+
 async function loadNightwaysData(reloadData = true) {
+
+    if (!reloadData && !nightwaysData) {
+        return;
+    }
+
+
+    let requestController = null;
+
+    if (reloadData) {
+
+        currentSearchController?.abort();
+
+        requestController = new AbortController();
+        currentSearchController = requestController;
+        nightwaysData = null;
+
+        resultsHeading.textContent =
+            "Overnight destinations";
+
+        map.setView(
+            DEFAULT_MAP_CENTER,
+            DEFAULT_MAP_ZOOM
+        );
+    }
 
     destinationCount.textContent =
         "Loading...";
@@ -664,6 +751,8 @@ async function loadNightwaysData(reloadData = true) {
     destinationList.innerHTML = "";
 
     destinationMarkers.clearLayers();
+
+    originMarkers.clearLayers();
 
     clearDestinationPreview();
 
@@ -673,26 +762,66 @@ async function loadNightwaysData(reloadData = true) {
         let data = nightwaysData;
 
 
-        if (reloadData || !data) {
+        if (reloadData) {
 
             const response =
                 await fetch(
-                    getNightwaysRequestUrl()
+                    getNightwaysRequestUrl(),
+                    {
+                        signal: requestController.signal
+                    }
                 );
 
 
             if (!response.ok) {
 
-                throw new Error(
-                    `Could not load data: ${response.status}`
+                throw new NightwaysApiError(
+                    await getNightwaysErrorMessage(
+                        response
+                    )
                 );
             }
 
 
             data = await response.json();
 
+            if (
+                currentSearchController !==
+                requestController
+            ) {
+                return;
+            }
+
             nightwaysData = data;
         }
+
+
+        const originName = data.origin;
+        const latitude =
+            data.origin_coordinates?.latitude;
+        const longitude =
+            data.origin_coordinates?.longitude;
+
+        if (
+            typeof originName !== "string" ||
+            !originName.trim() ||
+            !Number.isFinite(latitude) ||
+            !Number.isFinite(longitude)
+        ) {
+            throw new Error(
+                "Nightways returned invalid origin data."
+            );
+        }
+
+        const originCoordinates = [
+            latitude,
+            longitude
+        ];
+
+        renderOriginMarker(
+            originName,
+            originCoordinates
+        );
 
 
         const visibleDestinations =
@@ -703,14 +832,19 @@ async function loadNightwaysData(reloadData = true) {
                 );
 
 
+        resultsHeading.textContent =
+            `Overnight destinations from ${originName}`;
+
         destinationCount.textContent =
             `${visibleDestinations.length} direct overnight destinations`;
 
 
         const mapBounds =
             L.latLngBounds([
-                DRESDEN_COORDINATES
+                originCoordinates
             ]);
+
+        let destinationMarkerCount = 0;
 
 
         for (
@@ -780,7 +914,8 @@ async function loadNightwaysData(reloadData = true) {
 
                     openDestination(
                         card,
-                        destination
+                        destination,
+                        originName
                     );
                 }
             );
@@ -802,6 +937,8 @@ async function loadNightwaysData(reloadData = true) {
 
 
             if (coordinates) {
+
+                destinationMarkerCount += 1;
 
                 // ----------------------------------
                 // VISIBLE MARKER
@@ -875,7 +1012,8 @@ async function loadNightwaysData(reloadData = true) {
 
                     ensureDestinationOpen(
                         card,
-                        destination
+                        destination,
+                        originName
                     );
 
 
@@ -946,23 +1084,72 @@ async function loadNightwaysData(reloadData = true) {
 
 
         // ----------------------------------
-        // FIT MAP TO DESTINATIONS
+        // FIT MAP TO ORIGIN AND DESTINATIONS
         // ----------------------------------
 
-        map.fitBounds(
-            mapBounds,
-            {
-                padding: [30, 30]
-            }
-        );
+        if (destinationMarkerCount === 0) {
+
+            map.setView(
+                originCoordinates,
+                ORIGIN_ONLY_ZOOM
+            );
+
+        } else {
+
+            map.fitBounds(
+                mapBounds,
+                {
+                    padding: [30, 30]
+                }
+            );
+        }
 
 
     } catch (error) {
 
-        console.error(error);
+        if (
+            error?.name === "AbortError" ||
+            (
+                requestController &&
+                currentSearchController !==
+                    requestController
+            )
+        ) {
+            return;
+        }
+
+
+        nightwaysData = null;
+        destinationList.innerHTML = "";
+        destinationMarkers.clearLayers();
+        originMarkers.clearLayers();
+        clearDestinationPreview();
+
+        resultsHeading.textContent =
+            "Overnight destinations";
+
+        map.setView(
+            DEFAULT_MAP_CENTER,
+            DEFAULT_MAP_ZOOM
+        );
+
+        if (!(error instanceof NightwaysApiError)) {
+            console.error(error);
+        }
 
         destinationCount.textContent =
-            "Could not load overnight destinations.";
+            error instanceof NightwaysApiError
+                ? error.message
+                : GENERIC_LOAD_ERROR;
+
+    } finally {
+
+        if (
+            requestController &&
+            currentSearchController === requestController
+        ) {
+            currentSearchController = null;
+        }
     }
 }
 
