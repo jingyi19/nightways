@@ -9,12 +9,24 @@ from unittest.mock import patch
 from backend.boundaries import BoundaryGeometry, OriginBoundary
 from backend.localities import LocalityDatasetUnavailableError
 from backend.discovery import (
+    BATCH_ASSOCIATION_RADIUS_METRES,
+    BATCH_RADIUS_PADDING_METRES,
     CORE_CANDIDATE_MODES,
     DEPARTURE_WINDOW_SECONDS,
+    MAX_BATCH_CANDIDATES,
+    MAX_BATCH_RADIUS_METRES,
     MAX_CANDIDATE_STOPS,
     TRANSITOUS_MAP_STOPS_URL,
+    CandidateBatch,
+    CandidateStop,
     CandidateStopLimitError,
+    DenseOriginResponseLimitError,
+    _candidate_distance_metres,
+    _dense_boarding_stop_is_eligible,
+    _plan_candidate_batches,
     _request_candidate_stops,
+    _request_dense_stop_departures,
+    _stop_is_inside,
     get_nightways_for_origin,
     get_nightways_for_origin_by_locality,
     request_origin_departures,
@@ -24,6 +36,7 @@ from backend.transitous import (
     TRANSITOUS_API_URL,
     TRANSITOUS_USER_AGENT,
     ResolvedOrigin,
+    _collect_qualified_trips,
 )
 
 
@@ -91,13 +104,18 @@ class CandidateStopRequestTests(unittest.TestCase):
         self.assertEqual(urlopen.call_count, 1)
 
     @patch("backend.discovery.urlopen")
-    def test_default_safety_cap_rejects_26_stops_before_fanout(
+    def test_plan_requiring_more_than_25_batches_stops_before_fanout(
         self,
         urlopen,
     ):
         urlopen.return_value = _response(
             [
-                _stop(f"stop-{index}", 51.0, 13.0, ["COACH"])
+                _stop(
+                    f"stop-{index:02d}",
+                    50.1 + (index % 13) * 0.1,
+                    12.1 + (index // 13) * 0.8,
+                    ["COACH"],
+                )
                 for index in range(26)
             ]
         )
@@ -111,6 +129,7 @@ class CandidateStopRequestTests(unittest.TestCase):
 
         self.assertEqual(error.exception.candidate_count, 26)
         self.assertEqual(error.exception.limit, MAX_CANDIDATE_STOPS)
+        self.assertEqual(error.exception.required_request_count, 26)
         self.assertEqual(urlopen.call_count, 1)
 
     @patch("backend.discovery.urlopen")
@@ -143,6 +162,283 @@ class CandidateStopRequestTests(unittest.TestCase):
         self.assertEqual(parameters["mode"], [",".join(MOTIS_MODES)])
         self.assertEqual(parameters["fetchStops"], ["true"])
         self.assertEqual(parameters["withAlerts"], ["false"])
+
+    @patch("backend.discovery.urlopen")
+    def test_dense_requests_use_center_radius_and_exact_radius(self, urlopen):
+        candidates = [
+            _stop(
+                f"dense-{index:02d}",
+                51.0 + index * 0.00001,
+                13.0,
+                ["COACH"],
+            )
+            for index in range(26)
+        ]
+        batches = _plan_candidate_batches(
+            tuple(_candidate_from_payload(stop) for stop in candidates)
+        )
+        urlopen.side_effect = [
+            _response(candidates),
+            *(_response({"stopTimes": []}) for _ in batches),
+        ]
+
+        result = request_origin_departures(
+            _origin(),
+            _boundary(),
+            date(2026, 8, 14),
+        )
+
+        self.assertEqual(result, {"stopTimes": []})
+        self.assertEqual(urlopen.call_count, 1 + len(batches))
+        request = urlopen.call_args_list[1].args[0]
+        parameters = parse_qs(urlparse(request.full_url).query)
+        self.assertNotIn("stopId", parameters)
+        self.assertEqual(parameters["center"], ["51.0,13.0"])
+        self.assertEqual(
+            parameters["radius"],
+            [str(batches[0].radius_metres)],
+        )
+        self.assertEqual(parameters["exactRadius"], ["true"])
+        self.assertEqual(parameters["arriveBy"], ["false"])
+        self.assertEqual(parameters["direction"], ["LATER"])
+        self.assertEqual(parameters["fetchStops"], ["true"])
+        self.assertEqual(parameters["mode"], [",".join(MOTIS_MODES)])
+
+
+class CandidateBatchPlanningTests(unittest.TestCase):
+
+    def test_prague_shaped_fixture_has_complete_bounded_plan(self):
+        candidates = _prague_shaped_candidates()
+
+        batches = _plan_candidate_batches(candidates)
+
+        self.assertEqual(len(candidates), 51)
+        self.assertEqual(len(batches), 24)
+        original_ids = {candidate.stop_id for candidate in candidates}
+        assigned_ids = [
+            member.stop_id
+            for batch in batches
+            for member in batch.members
+        ]
+        self.assertEqual(len(assigned_ids), len(set(assigned_ids)))
+        self.assertEqual(set(assigned_ids), original_ids)
+        for batch in batches:
+            self.assertIn(batch.center.stop_id, original_ids)
+            self.assertIn(batch.center, batch.members)
+            self.assertLessEqual(len(batch.members), MAX_BATCH_CANDIDATES)
+            self.assertLessEqual(
+                batch.radius_metres,
+                MAX_BATCH_RADIUS_METRES,
+            )
+            self.assertGreaterEqual(
+                batch.radius_metres,
+                BATCH_RADIUS_PADDING_METRES,
+            )
+            for member in batch.members:
+                self.assertLessEqual(
+                    _candidate_distance_metres(batch.center, member),
+                    batch.radius_metres,
+                )
+
+    def test_batch_planning_is_independent_of_input_order(self):
+        candidates = _prague_shaped_candidates()
+
+        forward = _batch_signature(_plan_candidate_batches(candidates))
+        reversed_plan = _batch_signature(
+            _plan_candidate_batches(tuple(reversed(candidates)))
+        )
+
+        self.assertEqual(forward, reversed_plan)
+
+
+class DenseBoardingStopTests(unittest.TestCase):
+
+    def setUp(self):
+        self.candidate = _candidate("candidate", 51.0, 13.0)
+        self.batch = CandidateBatch(
+            center=self.candidate,
+            members=(self.candidate,),
+            radius_metres=1000,
+        )
+
+    def test_outside_origin_boundary_is_rejected(self):
+        stop = _boarding_stop("candidate", 52.1, 13.0)
+
+        self.assertFalse(
+            _dense_boarding_stop_is_eligible(
+                stop,
+                _boundary(),
+                self.batch,
+            )
+        )
+
+    def test_outside_requested_batch_circle_is_rejected(self):
+        stop = _boarding_stop("candidate", 51.02, 13.0)
+
+        self.assertFalse(
+            _dense_boarding_stop_is_eligible(
+                stop,
+                _boundary(),
+                self.batch,
+            )
+        )
+
+    def test_unrelated_stop_inside_circle_is_rejected(self):
+        stop = _boarding_stop("unrelated", 51.004, 13.0)
+
+        self.assertFalse(
+            _dense_boarding_stop_is_eligible(
+                stop,
+                _boundary(),
+                self.batch,
+            )
+        )
+
+    def test_exact_candidate_id_is_not_subject_to_association_distance(self):
+        stop = _boarding_stop("candidate", 51.004, 13.0)
+
+        self.assertTrue(
+            _dense_boarding_stop_is_eligible(
+                stop,
+                _boundary(),
+                self.batch,
+            )
+        )
+
+    def test_nearby_cross_feed_stop_is_eligible(self):
+        stop = _boarding_stop("other-feed", 51.001, 13.0)
+
+        self.assertTrue(
+            _dense_boarding_stop_is_eligible(
+                stop,
+                _boundary(),
+                self.batch,
+            )
+        )
+        self.assertEqual(BATCH_ASSOCIATION_RADIUS_METRES, 250)
+
+    def test_child_stop_identity_is_eligible(self):
+        stop = {
+            **_boarding_stop("platform", 51.004, 13.0),
+            "parentId": "candidate",
+        }
+
+        self.assertTrue(
+            _dense_boarding_stop_is_eligible(
+                stop,
+                _boundary(),
+                self.batch,
+            )
+        )
+
+
+class DenseOriginResourceLimitTests(unittest.TestCase):
+
+    @patch("backend.discovery.MAX_DENSE_RESPONSE_BYTES", 32)
+    @patch("backend.discovery.urlopen")
+    def test_per_response_byte_limit_is_explicit(self, urlopen):
+        urlopen.return_value = BytesIO(b"x" * 33)
+        batch = CandidateBatch(
+            center=_candidate("center", 51.0, 13.0),
+            members=(_candidate("center", 51.0, 13.0),),
+            radius_metres=25,
+        )
+
+        with self.assertRaises(DenseOriginResponseLimitError) as error:
+            _request_dense_stop_departures(
+                _origin(),
+                date(2026, 8, 14),
+                batch,
+            )
+
+        self.assertEqual(error.exception.resource, "response body bytes")
+        self.assertEqual(error.exception.limit, 32)
+
+    @patch("backend.discovery.MAX_DENSE_STOP_TIMES", 1)
+    @patch("backend.discovery._request_dense_stop_departures")
+    @patch("backend.discovery._request_candidate_stops")
+    def test_per_response_event_limit_is_explicit(
+        self,
+        request_candidates,
+        request_dense,
+    ):
+        request_candidates.return_value = _dense_candidates()
+        request_dense.return_value = (
+            {"stopTimes": [{"tripId": "one"}, {"tripId": "two"}]},
+            100,
+        )
+
+        with self.assertRaises(DenseOriginResponseLimitError) as error:
+            request_origin_departures(
+                _origin(),
+                _boundary(),
+                date(2026, 8, 14),
+            )
+
+        self.assertEqual(error.exception.resource, "stoptimes in one response")
+        self.assertEqual(request_dense.call_count, 1)
+
+    @patch("backend.discovery.MAX_DENSE_AGGREGATE_BYTES", 10)
+    @patch("backend.discovery._request_dense_stop_departures")
+    @patch("backend.discovery._request_candidate_stops")
+    def test_aggregate_byte_limit_is_explicit(
+        self,
+        request_candidates,
+        request_dense,
+    ):
+        request_candidates.return_value = _dense_candidates()
+        request_dense.return_value = ({"stopTimes": []}, 6)
+
+        with self.assertRaises(DenseOriginResponseLimitError) as error:
+            request_origin_departures(
+                _origin(),
+                _boundary(),
+                date(2026, 8, 14),
+            )
+
+        self.assertEqual(error.exception.resource, "aggregate response bytes")
+        self.assertEqual(request_dense.call_count, 2)
+
+    @patch("backend.discovery.MAX_DENSE_AGGREGATE_STOP_TIMES", 1)
+    @patch("backend.discovery._request_dense_stop_departures")
+    @patch("backend.discovery._request_candidate_stops")
+    def test_aggregate_event_limit_is_explicit(
+        self,
+        request_candidates,
+        request_dense,
+    ):
+        request_candidates.return_value = _dense_candidates()
+        request_dense.return_value = (
+            {"stopTimes": [{"tripId": "one"}]},
+            1,
+        )
+
+        with self.assertRaises(DenseOriginResponseLimitError) as error:
+            request_origin_departures(
+                _origin(),
+                _boundary(),
+                date(2026, 8, 14),
+            )
+
+        self.assertEqual(error.exception.resource, "aggregate stoptimes")
+        self.assertEqual(request_dense.call_count, 2)
+
+
+class DenseOriginOverlapTests(unittest.TestCase):
+
+    def test_duplicate_trips_from_overlapping_batches_merge_once(self):
+        stop_time = _qualifying_stop_time()
+        response = {"stopTimes": [stop_time, dict(stop_time)]}
+
+        trips = _collect_qualified_trips(
+            response,
+            date(2026, 8, 14),
+            lambda stop: _stop_is_inside(_boundary(), stop),
+            "Europe/Berlin",
+        )
+
+        self.assertEqual(tuple(trips), ("trip-1",))
+        self.assertEqual(len(trips["trip-1"]["arrivals"]), 1)
 
 
 class InternalOriginFlowTests(unittest.TestCase):
@@ -270,6 +566,96 @@ class InternalOriginFlowTests(unittest.TestCase):
         )
         self.assertEqual(tuple(build_arguments[2]), tuple(trips.values()))
         self.assertIs(build_arguments[3], locality_index)
+
+
+def _candidate(stop_id, lat, lon, parent_id=None):
+    return CandidateStop(
+        stop_id=stop_id,
+        name=stop_id,
+        lat=lat,
+        lon=lon,
+        modes=("COACH",),
+        parent_id=parent_id,
+    )
+
+
+def _candidate_from_payload(stop):
+    return _candidate(
+        stop["stopId"],
+        stop["lat"],
+        stop["lon"],
+        stop.get("parentId"),
+    )
+
+
+def _prague_shaped_candidates():
+    candidates = []
+    stop_number = 0
+    for cluster_number in range(24):
+        row, column = divmod(cluster_number, 6)
+        cluster_size = 3 if cluster_number < 3 else 2
+        cluster_lat = 50.02 + row * 0.02
+        cluster_lon = 14.25 + column * 0.025
+        for member_number in range(cluster_size):
+            candidates.append(
+                _candidate(
+                    f"prague-{stop_number:02d}",
+                    cluster_lat + member_number * 0.0002,
+                    cluster_lon,
+                )
+            )
+            stop_number += 1
+    return tuple(candidates)
+
+
+def _dense_candidates():
+    return tuple(
+        _candidate(
+            f"dense-{index:02d}",
+            51.0 + index * 0.00001,
+            13.0,
+        )
+        for index in range(26)
+    )
+
+
+def _batch_signature(batches):
+    return tuple(
+        (
+            batch.center.stop_id,
+            tuple(member.stop_id for member in batch.members),
+            batch.radius_metres,
+        )
+        for batch in batches
+    )
+
+
+def _boarding_stop(stop_id, lat, lon):
+    return {
+        "stopId": stop_id,
+        "name": stop_id,
+        "lat": lat,
+        "lon": lon,
+    }
+
+
+def _qualifying_stop_time():
+    return {
+        "tripId": "trip-1",
+        "mode": "COACH",
+        "place": {
+            **_boarding_stop("origin", 51.0, 13.0),
+            "departure": "2026-08-14T20:00:00+02:00",
+            "tz": "Europe/Berlin",
+        },
+        "nextStops": [
+            {
+                **_boarding_stop("destination", 48.0, 11.0),
+                "arrival": "2026-08-15T07:00:00+02:00",
+                "tz": "Europe/Berlin",
+            }
+        ],
+    }
 
 
 def _origin():
