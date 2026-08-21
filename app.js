@@ -13,6 +13,14 @@ const modeFilterButtons = document.querySelectorAll(
     ".mode-filter-button"
 );
 
+const localDate = new Date();
+
+dateInput.value = [
+    localDate.getFullYear(),
+    String(localDate.getMonth() + 1).padStart(2, "0"),
+    String(localDate.getDate()).padStart(2, "0")
+].join("-");
+
 const TRAIN_SERVICE_MODES = new Set([
     "TRAIN",
     "LONG_DISTANCE",
