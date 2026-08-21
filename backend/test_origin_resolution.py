@@ -7,6 +7,7 @@ from backend.transitous import (
     OriginResolutionError,
     ResolvedOrigin,
     TransitousError,
+    _normalized_city_name,
     resolve_origin,
 )
 
@@ -97,6 +98,82 @@ class LiveOriginResolutionTests(unittest.TestCase):
 
 
 class OriginSelectionTests(unittest.TestCase):
+
+    @patch("backend.transitous._request_place_matches")
+    def test_liege_ascii_input_resolves_to_canonical_name(self, request):
+
+        request.return_value = [
+            _place("Liège", "BE", 50.8466, 5.5797, "Europe/Brussels")
+        ]
+
+        result = resolve_origin("Liege")
+
+        self.assertEqual(result.name, "Liège")
+        self.assertEqual(result.country_code, "BE")
+        self.assertEqual(result.timezone, "Europe/Brussels")
+
+
+    @patch("backend.transitous._request_place_matches")
+    def test_malmo_ascii_input_resolves_to_canonical_name(self, request):
+
+        request.return_value = [
+            _place("Malmö", "SE", 55.6050, 13.0038, "Europe/Stockholm")
+        ]
+
+        result = resolve_origin("Malmo")
+
+        self.assertEqual(result.name, "Malmö")
+        self.assertEqual(result.country_code, "SE")
+        self.assertEqual(result.timezone, "Europe/Stockholm")
+
+
+    @patch("backend.transitous._request_place_matches")
+    def test_kosice_prefers_diacritic_equivalent_urban_candidate(self, request):
+
+        request.return_value = [
+            _place("Košice", "SK", 48.7164, 21.2611, "Europe/Bratislava"),
+            _place(
+                "Kosice",
+                "HR",
+                45.3050,
+                15.9700,
+                "Europe/Zagreb",
+                category="hamlet",
+            ),
+        ]
+
+        result = resolve_origin("Kosice")
+
+        self.assertEqual(result.name, "Košice")
+        self.assertEqual(result.country_code, "SK")
+        self.assertEqual(result.timezone, "Europe/Bratislava")
+        self.assertEqual((result.lat, result.lon), (48.7164, 21.2611))
+
+
+    @patch("backend.transitous._request_place_matches")
+    def test_diacritic_equivalent_urban_candidates_remain_ambiguous(
+        self,
+        request,
+    ):
+
+        request.return_value = [
+            _place("Malmö", "SE", 55.6050, 13.0038, "Europe/Stockholm"),
+            _place("Málmo", "IT", 45.0000, 9.0000, "Europe/Rome", category="town"),
+        ]
+
+        with self.assertRaises(AmbiguousOriginError) as error:
+
+            resolve_origin("Malmo")
+
+        self.assertEqual(len(error.exception.candidates), 2)
+
+
+    def test_name_normalization_removes_combining_diacritics_only(self):
+
+        self.assertEqual(_normalized_city_name("Liège"), "liege")
+        self.assertEqual(_normalized_city_name("Malmö"), "malmo")
+        self.assertEqual(_normalized_city_name("Košice"), "kosice")
+        self.assertNotEqual(_normalized_city_name("Łódź"), "lodz")
 
     def test_empty_city_is_rejected_without_a_request(self):
 

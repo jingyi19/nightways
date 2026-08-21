@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from unicodedata import combining as unicode_combining
 from unicodedata import normalize as unicode_normalize
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -293,7 +294,13 @@ def _origin_from_match(match: dict) -> ResolvedOrigin | None:
 
 def _normalized_city_name(city_name: str) -> str:
     normalized = unicode_normalize("NFKC", city_name)
-    return " ".join(normalized.split()).casefold()
+    decomposed = unicode_normalize("NFD", normalized)
+    without_diacritics = "".join(
+        character
+        for character in decomposed
+        if not unicode_combining(character)
+    )
+    return " ".join(without_diacritics.split()).casefold()
 
 
 def _normalized_origin_query(city_name: str) -> tuple[str, tuple[str, ...]]:
