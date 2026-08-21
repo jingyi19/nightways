@@ -1,5 +1,6 @@
 import json
 import math
+from collections.abc import Callable
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
@@ -92,6 +93,10 @@ class AmbiguousOriginError(OriginResolutionError):
         super().__init__(f"Multiple European places match {city_name!r}.")
 
 
+class OriginMetadataUnavailableError(RuntimeError):
+    """Raised internally when selected-origin metadata cannot be enriched."""
+
+
 @dataclass(frozen=True, slots=True)
 class ResolvedOrigin:
     name: str
@@ -100,6 +105,28 @@ class ResolvedOrigin:
     lat: float
     lon: float
     timezone: str
+
+
+@dataclass(frozen=True, slots=True)
+class OriginCandidate:
+    """Transitous identity with metadata that may still need enrichment."""
+
+    name: str
+    lat: float
+    lon: float
+    country_code: str | None
+    timezone: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class OriginMetadata:
+    """Missing origin fields supplied without changing Transitous identity."""
+
+    country_code: str | None = None
+    timezone: str | None = None
+
+
+OriginMetadataEnricher = Callable[[OriginCandidate], OriginMetadata]
 
 
 DRESDEN_ORIGIN = ResolvedOrigin(
@@ -128,7 +155,10 @@ LOWER_LEVEL_LOCALITY_CATEGORIES = frozenset(
 )
 
 
-def resolve_origin(city_name: str) -> ResolvedOrigin:
+def resolve_origin(
+    city_name: str,
+    metadata_enricher: OriginMetadataEnricher | None = None,
+) -> ResolvedOrigin:
     """Resolve one unambiguous European city using Transitous PLACE data."""
 
     if not isinstance(city_name, str):
@@ -141,7 +171,7 @@ def resolve_origin(city_name: str) -> ResolvedOrigin:
     matches = _request_place_matches(query)
     candidates = []
     for match in matches:
-        candidate = _origin_from_match(match)
+        candidate = _origin_candidate_from_match(match)
         if candidate is not None:
             candidates.append((candidate, match))
 
@@ -190,17 +220,12 @@ def resolve_origin(city_name: str) -> ResolvedOrigin:
         )
 
     selected_candidate, selected_match = plausible_candidates[0]
-    if _is_lower_level_locality(selected_match) and any(
-        _is_incomplete_urban_name_match(
-            match,
-            normalized_name,
-            query_qualifiers,
-        )
-        for match in matches
-    ):
-        raise OriginNotFoundError(f"No European city found for {query!r}.")
-
-    return selected_candidate
+    return _resolved_origin_from_candidate(
+        selected_candidate,
+        selected_match,
+        query,
+        metadata_enricher,
+    )
 
 
 def _request_place_matches(city_name: str) -> list[dict]:
@@ -245,7 +270,7 @@ def _request_place_matches(city_name: str) -> list[dict]:
     return matches
 
 
-def _origin_from_match(match: dict) -> ResolvedOrigin | None:
+def _origin_candidate_from_match(match: dict) -> OriginCandidate | None:
     if not isinstance(match, dict) or match.get("type") != "PLACE":
         return None
 
@@ -262,15 +287,28 @@ def _origin_from_match(match: dict) -> ResolvedOrigin | None:
     lat = match.get("lat")
     lon = match.get("lon")
 
-    if not all(
-        isinstance(value, str) and value.strip()
-        for value in (name, country_code, timezone)
-    ):
+    if not isinstance(name, str) or not name.strip():
         return None
 
-    country_code = country_code.strip().upper()
-    if country_code not in EUROPEAN_COUNTRY_CODES:
+    if country_code is None or (
+        isinstance(country_code, str) and not country_code.strip()
+    ):
+        country_code = None
+    elif not isinstance(country_code, str):
         return None
+    else:
+        country_code = country_code.strip().upper()
+        if country_code not in EUROPEAN_COUNTRY_CODES:
+            return None
+
+    if timezone is None or (
+        isinstance(timezone, str) and not timezone.strip()
+    ):
+        timezone = None
+    elif not isinstance(timezone, str):
+        return None
+    else:
+        timezone = timezone.strip()
 
     if (
         isinstance(lat, bool)
@@ -284,6 +322,50 @@ def _origin_from_match(match: dict) -> ResolvedOrigin | None:
     ):
         return None
 
+    return OriginCandidate(
+        name=name.strip(),
+        country_code=country_code,
+        lat=float(lat),
+        lon=float(lon),
+        timezone=timezone,
+    )
+
+
+def _resolved_origin_from_candidate(
+    candidate: OriginCandidate,
+    match: dict,
+    query: str,
+    metadata_enricher: OriginMetadataEnricher | None,
+) -> ResolvedOrigin:
+    country_code = candidate.country_code
+    timezone = candidate.timezone
+
+    if country_code is None or timezone is None:
+        if metadata_enricher is None:
+            raise OriginNotFoundError(
+                f"No European city found for {query!r}."
+            )
+        try:
+            metadata = metadata_enricher(candidate)
+        except OriginMetadataUnavailableError as error:
+            raise OriginNotFoundError(
+                f"No European city found for {query!r}."
+            ) from error
+
+        if not isinstance(metadata, OriginMetadata):
+            raise OriginNotFoundError(
+                f"No European city found for {query!r}."
+            )
+        if country_code is None:
+            country_code = _normalized_enriched_country_code(
+                metadata.country_code
+            )
+        if timezone is None:
+            timezone = _normalized_enriched_timezone(metadata.timezone)
+
+    if country_code is None or timezone is None:
+        raise OriginNotFoundError(f"No European city found for {query!r}.")
+
     country = country_code
     for area in match.get("areas") or []:
         if not isinstance(area, dict) or area.get("adminLevel") != 2:
@@ -295,13 +377,28 @@ def _origin_from_match(match: dict) -> ResolvedOrigin | None:
             break
 
     return ResolvedOrigin(
-        name=name.strip(),
+        name=candidate.name,
         country=country,
         country_code=country_code,
-        lat=float(lat),
-        lon=float(lon),
-        timezone=timezone.strip(),
+        lat=candidate.lat,
+        lon=candidate.lon,
+        timezone=timezone,
     )
+
+
+def _normalized_enriched_country_code(value) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    country_code = value.strip().upper()
+    if country_code not in EUROPEAN_COUNTRY_CODES:
+        return None
+    return country_code
+
+
+def _normalized_enriched_timezone(value) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return value.strip()
 
 
 def _normalized_city_name(city_name: str) -> str:
@@ -356,38 +453,6 @@ def _is_lower_level_locality(match: dict) -> bool:
         isinstance(category, str)
         and category in LOWER_LEVEL_LOCALITY_CATEGORIES
     )
-
-
-def _is_incomplete_urban_name_match(
-    match: dict,
-    normalized_city_name: str,
-    query_qualifiers: tuple[str, ...],
-) -> bool:
-    if (
-        not isinstance(match, dict)
-        or match.get("type") != "PLACE"
-        or not _is_urban_locality(match)
-    ):
-        return False
-
-    name = match.get("name")
-    if (
-        not isinstance(name, str)
-        or not name.strip()
-        or _normalized_city_name(name) != normalized_city_name
-        or not _matches_query_qualifiers(match, query_qualifiers)
-    ):
-        return False
-
-    country_code = match.get("country")
-    if (
-        isinstance(country_code, str)
-        and country_code.strip()
-        and country_code.strip().upper() not in EUROPEAN_COUNTRY_CODES
-    ):
-        return False
-
-    return _origin_from_match(match) is None
 
 
 def _represents_default_locality(

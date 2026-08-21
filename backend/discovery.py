@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from backend.boundaries import OriginBoundary, resolve_origin_boundary
 from backend.localities import GiscoLauIndex, build_locality_response
+from backend.origin_metadata import CoordinateOriginMetadataEnricher
 from backend.transitous import (
     DEPARTURE_START,
     DestinationCatalog,
@@ -157,7 +158,10 @@ def get_nightways_for_origin_by_locality(
                 candidate_stop_limit,
             )
 
-    origin = resolve_origin(city_name)
+    origin = resolve_origin(
+        city_name,
+        CoordinateOriginMetadataEnricher(locality_index),
+    )
     boundary = resolve_origin_boundary(origin)
     response = request_origin_departures(
         origin,

@@ -1,9 +1,11 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from backend.transitous import (
     AmbiguousOriginError,
     OriginNotFoundError,
+    OriginMetadata,
+    OriginMetadataUnavailableError,
     OriginResolutionError,
     ResolvedOrigin,
     TransitousError,
@@ -98,6 +100,138 @@ class LiveOriginResolutionTests(unittest.TestCase):
 
 
 class OriginSelectionTests(unittest.TestCase):
+
+    @patch("backend.transitous._request_place_matches")
+    def test_selected_candidate_missing_both_fields_is_enriched(self, request):
+        krakow = _place(
+            "Kraków",
+            None,
+            50.0619474,
+            19.9368564,
+            None,
+        )
+        request.return_value = [krakow]
+        enricher = Mock(
+            return_value=OriginMetadata("PL", "Europe/Warsaw")
+        )
+
+        result = resolve_origin("Krakow", enricher)
+
+        self.assertEqual(result.name, "Kraków")
+        self.assertEqual(result.country, "PL")
+        self.assertEqual(result.country_code, "PL")
+        self.assertEqual(result.timezone, "Europe/Warsaw")
+        self.assertEqual((result.lat, result.lon), (50.0619474, 19.9368564))
+        enricher.assert_called_once()
+
+    @patch("backend.transitous._request_place_matches")
+    def test_missing_country_preserves_transitous_timezone_and_area_name(
+        self,
+        request,
+    ):
+        match = _place(
+            "Example",
+            None,
+            50.0,
+            10.0,
+            "Europe/Berlin",
+        )
+        match["areas"] = [{"name": "Germany", "adminLevel": 2}]
+        request.return_value = [match]
+        enricher = Mock(
+            return_value=OriginMetadata("DE", "Europe/Paris")
+        )
+
+        result = resolve_origin("Example", enricher)
+
+        self.assertEqual(result.country, "Germany")
+        self.assertEqual(result.country_code, "DE")
+        self.assertEqual(result.timezone, "Europe/Berlin")
+
+    @patch("backend.transitous._request_place_matches")
+    def test_missing_timezone_preserves_transitous_country(self, request):
+        request.return_value = [
+            _place("Example", "DE", 50.0, 10.0, None)
+        ]
+        enricher = Mock(
+            return_value=OriginMetadata("FR", "Europe/Berlin")
+        )
+
+        result = resolve_origin("Example", enricher)
+
+        self.assertEqual(result.country_code, "DE")
+        self.assertEqual(result.timezone, "Europe/Berlin")
+
+    @patch("backend.transitous._request_place_matches")
+    def test_complete_candidate_does_not_call_enricher(self, request):
+        request.return_value = [
+            _place("Example", "DE", 50.0, 10.0, "Europe/Berlin")
+        ]
+        enricher = Mock()
+
+        result = resolve_origin("Example", enricher)
+
+        self.assertEqual(result.country_code, "DE")
+        self.assertEqual(result.timezone, "Europe/Berlin")
+        enricher.assert_not_called()
+
+    @patch("backend.transitous._request_place_matches")
+    def test_incomplete_urban_candidate_participates_in_ambiguity(
+        self,
+        request,
+    ):
+        request.return_value = [
+            _place("Example", None, 50.0, 10.0, None),
+            _place("Example", "FR", 48.0, 2.0, "Europe/Paris"),
+        ]
+
+        with self.assertRaises(AmbiguousOriginError):
+            resolve_origin("Example", Mock())
+
+    @patch("backend.transitous._request_place_matches")
+    def test_only_selected_incomplete_urban_candidate_is_enriched(
+        self,
+        request,
+    ):
+        request.return_value = [
+            _place("Kraków", None, 50.0619474, 19.9368564, None),
+            _place(
+                "Krakow",
+                "DE",
+                54.1241012,
+                12.7904098,
+                "Europe/Berlin",
+                category="hamlet",
+            ),
+        ]
+        enricher = Mock(
+            return_value=OriginMetadata("PL", "Europe/Warsaw")
+        )
+
+        result = resolve_origin("Krakow", enricher)
+
+        self.assertEqual(result.name, "Kraków")
+        self.assertEqual(result.country_code, "PL")
+        self.assertEqual(enricher.call_args.args[0].name, "Kraków")
+        enricher.assert_called_once()
+
+    @patch("backend.transitous._request_place_matches")
+    def test_enrichment_inability_preserves_origin_not_found_contract(
+        self,
+        request,
+    ):
+        request.return_value = [
+            _place("Kraków", None, 50.0619474, 19.9368564, None)
+        ]
+        enricher = Mock(
+            side_effect=OriginMetadataUnavailableError("no unique metadata")
+        )
+
+        with self.assertRaisesRegex(
+            OriginNotFoundError,
+            "No European city found for 'Krakow'",
+        ):
+            resolve_origin("Krakow", enricher)
 
     @patch("backend.transitous._request_place_matches")
     def test_liege_ascii_input_resolves_to_canonical_name(self, request):

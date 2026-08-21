@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from backend.boundaries import BoundaryGeometry, OriginBoundary
 from backend.localities import LocalityDatasetUnavailableError
+from backend.origin_metadata import CoordinateOriginMetadataEnricher
 from backend.discovery import (
     BATCH_ASSOCIATION_RADIUS_METRES,
     BATCH_RADIUS_PADDING_METRES,
@@ -566,6 +567,13 @@ class InternalOriginFlowTests(unittest.TestCase):
         )
         self.assertEqual(tuple(build_arguments[2]), tuple(trips.values()))
         self.assertIs(build_arguments[3], locality_index)
+        resolve_arguments = resolve.call_args.args
+        self.assertEqual(resolve_arguments[0], "Berlin")
+        self.assertIsInstance(
+            resolve_arguments[1],
+            CoordinateOriginMetadataEnricher,
+        )
+        self.assertIs(resolve_arguments[1].locality_index, locality_index)
 
 
 def _candidate(stop_id, lat, lon, parent_id=None):
