@@ -115,6 +115,130 @@ class BoundaryResolutionTests(unittest.TestCase):
         self.assertEqual(boundary.display_name, "Greater London")
 
     @patch("backend.boundaries._request_nominatim_matches")
+    def test_initial_oslo_results_use_unique_municipality(self, request):
+        origin = _origin("Oslo", "NO")
+        request.return_value = [
+            _boundary_match(
+                "Oslo County",
+                "NO",
+                406091,
+                _rectangle(10.4, 59.8, 11.0, 60.0),
+                address_type="county",
+            ),
+            _boundary_match(
+                "Oslo Municipality",
+                "NO",
+                2775550,
+                _rectangle(10.4, 59.8, 11.0, 60.0),
+                address_type="municipality",
+            ),
+        ]
+
+        boundary = resolve_origin_boundary(origin)
+
+        self.assertEqual(boundary.osm_id, 2775550)
+        request.assert_called_once_with(origin)
+
+    @patch("backend.boundaries._request_nominatim_matches")
+    def test_initial_trondheim_result_uses_unique_municipality(self, request):
+        origin = _origin("Trondheim", "NO")
+        request.return_value = [
+            _boundary_match(
+                "Trondheim Municipality",
+                "NO",
+                10143487,
+                _rectangle(10.0, 63.2, 10.8, 63.6),
+                address_type="municipality",
+            )
+        ]
+
+        boundary = resolve_origin_boundary(origin)
+
+        self.assertEqual(boundary.osm_id, 10143487)
+        request.assert_called_once_with(origin)
+
+    @patch("backend.boundaries._request_nominatim_matches")
+    def test_initial_city_boundary_retains_precedence_over_municipality(
+        self,
+        request,
+    ):
+        request.return_value = [
+            _boundary_match(
+                "Example Municipality",
+                "DE",
+                200,
+                _rectangle(10, 50, 12, 52),
+                address_type="municipality",
+            ),
+            _boundary_match(
+                "Example City",
+                "DE",
+                100,
+                _rectangle(10.5, 50.5, 11.5, 51.5),
+            ),
+        ]
+
+        boundary = resolve_origin_boundary(_origin("Example", "DE"))
+
+        self.assertEqual(boundary.osm_id, 100)
+
+    @patch("backend.boundaries._request_nominatim_matches")
+    def test_multiple_initial_municipalities_are_ambiguous(self, request):
+        origin = _origin("Example", "DE")
+        request.return_value = [
+            _boundary_match(
+                "Example Municipality One",
+                "DE",
+                201,
+                _rectangle(10, 50, 11, 51),
+                address_type="municipality",
+            ),
+            _boundary_match(
+                "Example Municipality Two",
+                "DE",
+                202,
+                _rectangle(11, 50, 12, 51),
+                address_type="municipality",
+            ),
+        ]
+
+        with self.assertRaises(AmbiguousBoundaryError) as error:
+            resolve_origin_boundary(origin)
+
+        self.assertEqual(len(error.exception.candidates), 2)
+        request.assert_called_once_with(origin)
+
+    @patch("backend.boundaries._request_nominatim_matches")
+    def test_initial_municipality_with_wrong_country_is_rejected(self, request):
+        request.return_value = [
+            _boundary_match(
+                "Example Municipality",
+                "FR",
+                300,
+                _rectangle(2, 48, 3, 49),
+                address_type="municipality",
+            )
+        ]
+
+        with self.assertRaises(BoundaryNotFoundError):
+            resolve_origin_boundary(_origin("Example", "DE"))
+
+    @patch("backend.boundaries._request_nominatim_matches")
+    def test_initial_municipality_without_polygon_is_rejected(self, request):
+        request.return_value = [
+            _boundary_match(
+                "Example Municipality",
+                "DE",
+                300,
+                {"type": "Point", "coordinates": [11, 51]},
+                address_type="municipality",
+            )
+        ]
+
+        with self.assertRaises(BoundaryNotFoundError):
+            resolve_origin_boundary(_origin("Example", "DE"))
+
+    @patch("backend.boundaries._request_nominatim_matches")
     def test_copenhagen_point_first_uses_municipality_fallback(self, request):
         origin = _origin("Copenhagen", "DK")
         city_point = _city_point("Copenhagen", "DK", 13707878)

@@ -122,10 +122,10 @@ def resolve_origin_boundary(origin: ResolvedOrigin) -> OriginBoundary:
         raise ValueError("Resolved origin must have a name and country code.")
 
     matches = _request_nominatim_matches(origin)
-    direct_boundary = _first_boundary(
+    direct_boundary = _select_fallback_boundary(
         matches,
+        origin,
         country_code,
-        address_type="city",
     )
     if direct_boundary is not None:
         return direct_boundary
