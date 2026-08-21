@@ -106,6 +106,57 @@ class OriginBoundary:
         return self.geometry.contains(lat, lon)
 
 
+class OriginBoundaryContainment:
+    """Request-local exact containment with a conservative coarse reject."""
+
+    __slots__ = ("boundary", "_bounds", "_exact_results")
+
+    def __init__(self, boundary: OriginBoundary):
+        if not isinstance(boundary, OriginBoundary):
+            raise TypeError("boundary must be an OriginBoundary")
+
+        positions = (
+            position
+            for polygon in boundary.geometry.polygons
+            for ring in polygon
+            for position in ring
+        )
+        coordinates = tuple(positions)
+        longitudes = tuple(position[0] for position in coordinates)
+        latitudes = tuple(position[1] for position in coordinates)
+
+        self.boundary = boundary
+        self._bounds = (
+            min(latitudes),
+            min(longitudes),
+            max(latitudes),
+            max(longitudes),
+        )
+        self._exact_results: dict[tuple[float, float], bool] = {}
+
+    def contains(self, lat: float, lon: float) -> bool:
+        """Return exact containment, reusing results only within this object."""
+
+        latitude = _coordinate(lat, "latitude", -90, 90)
+        longitude = _coordinate(lon, "longitude", -180, 180)
+        south, west, north, east = self._bounds
+        if (
+            latitude < south
+            or latitude > north
+            or longitude < west
+            or longitude > east
+        ):
+            return False
+
+        coordinate = (latitude, longitude)
+        if coordinate not in self._exact_results:
+            self._exact_results[coordinate] = self.boundary.contains(
+                latitude,
+                longitude,
+            )
+        return self._exact_results[coordinate]
+
+
 def resolve_origin_boundary(origin: ResolvedOrigin) -> OriginBoundary:
     """Resolve one conservative polygonal boundary for a resolved origin.
 

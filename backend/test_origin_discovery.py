@@ -6,7 +6,11 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from unittest.mock import patch
 
-from backend.boundaries import BoundaryGeometry, OriginBoundary
+from backend.boundaries import (
+    BoundaryGeometry,
+    OriginBoundary,
+    OriginBoundaryContainment,
+)
 from backend.localities import LocalityDatasetUnavailableError
 from backend.origin_metadata import CoordinateOriginMetadataEnricher
 from backend.discovery import (
@@ -427,6 +431,39 @@ class DenseOriginResourceLimitTests(unittest.TestCase):
 
 class DenseOriginOverlapTests(unittest.TestCase):
 
+    @patch("backend.discovery._dense_boarding_stop_is_eligible")
+    @patch("backend.discovery._request_dense_stop_departures")
+    @patch("backend.discovery._request_candidate_stops")
+    def test_request_containment_is_shared_across_dense_stages(
+        self,
+        request_candidates,
+        request_dense,
+        boarding_stop_is_eligible,
+    ):
+        boundary = _boundary()
+        containment = OriginBoundaryContainment(boundary)
+        candidates = _dense_candidates()
+        batches = _plan_candidate_batches(candidates)
+        request_candidates.return_value = candidates
+        request_dense.return_value = (
+            {"stopTimes": [{"place": {}}]},
+            1,
+        )
+        boarding_stop_is_eligible.return_value = True
+
+        result = request_origin_departures(
+            _origin(),
+            boundary,
+            date(2026, 8, 14),
+            containment=containment,
+        )
+
+        request_candidates.assert_called_once_with(boundary, containment)
+        self.assertEqual(len(result["stopTimes"]), len(batches))
+        self.assertEqual(boarding_stop_is_eligible.call_count, len(batches))
+        for boarding_call in boarding_stop_is_eligible.call_args_list:
+            self.assertIs(boarding_call.args[3], containment)
+
     def test_duplicate_trips_from_overlapping_batches_merge_once(self):
         stop_time = _qualifying_stop_time()
         response = {"stopTimes": [stop_time, dict(stop_time)]}
@@ -492,15 +529,26 @@ class InternalOriginFlowTests(unittest.TestCase):
         self.assertEqual(result, expected)
         resolve.assert_called_once_with("  Berlin  ")
         resolve_boundary.assert_called_once_with(origin)
+        containment = request_departures.call_args.kwargs["containment"]
         request_departures.assert_called_once_with(
             origin,
             boundary,
             date(2026, 8, 14),
             MAX_CANDIDATE_STOPS,
+            containment=containment,
         )
+        self.assertIsInstance(containment, OriginBoundaryContainment)
+        self.assertIs(containment.boundary, boundary)
         arguments = build_response.call_args.args
         self.assertEqual(arguments[:3], ("Berlin", date(2026, 8, 14), response))
-        self.assertTrue(arguments[4]({"lat": 51.0, "lon": 13.0}))
+        with patch.object(
+            OriginBoundaryContainment,
+            "contains",
+            autospec=True,
+            return_value=True,
+        ) as contains:
+            self.assertTrue(arguments[4]({"lat": 51.0, "lon": 13.0}))
+        contains.assert_called_once_with(containment, 51.0, 13.0)
         self.assertFalse(arguments[4]({"lat": 53.0, "lon": 13.0}))
         self.assertEqual(arguments[5], "Europe/Berlin")
 
@@ -546,18 +594,31 @@ class InternalOriginFlowTests(unittest.TestCase):
             },
         )
         self.assertEqual(result["origin"], "Berlin")
+        containment = request_departures.call_args.kwargs["containment"]
         request_departures.assert_called_once_with(
             origin,
             boundary,
             date(2026, 8, 14),
             MAX_CANDIDATE_STOPS,
+            containment=containment,
         )
+        self.assertIsInstance(containment, OriginBoundaryContainment)
+        self.assertIs(containment.boundary, boundary)
         collect_arguments = collect_trips.call_args.args
         self.assertEqual(
             collect_arguments[:2],
             (response, date(2026, 8, 14)),
         )
-        self.assertTrue(collect_arguments[2]({"lat": 51.0, "lon": 13.0}))
+        with patch.object(
+            OriginBoundaryContainment,
+            "contains",
+            autospec=True,
+            return_value=True,
+        ) as contains:
+            self.assertTrue(
+                collect_arguments[2]({"lat": 51.0, "lon": 13.0})
+            )
+        contains.assert_called_once_with(containment, 51.0, 13.0)
         self.assertFalse(collect_arguments[2]({"lat": 53.0, "lon": 13.0}))
         self.assertEqual(collect_arguments[3], "Europe/Berlin")
         build_arguments = build_response.call_args.args

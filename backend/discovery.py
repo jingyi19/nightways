@@ -15,7 +15,11 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from backend.boundaries import OriginBoundary, resolve_origin_boundary
+from backend.boundaries import (
+    OriginBoundary,
+    OriginBoundaryContainment,
+    resolve_origin_boundary,
+)
 from backend.localities import GiscoLauIndex, build_locality_response
 from backend.origin_metadata import CoordinateOriginMetadataEnricher
 from backend.transitous import (
@@ -118,11 +122,13 @@ def get_nightways_for_origin(
 
     origin = resolve_origin(city_name)
     boundary = resolve_origin_boundary(origin)
+    containment = OriginBoundaryContainment(boundary)
     response = request_origin_departures(
         origin,
         boundary,
         travel_date,
         candidate_stop_limit,
+        containment=containment,
     )
     catalog = DestinationCatalog(reference_file)
 
@@ -131,7 +137,7 @@ def get_nightways_for_origin(
         travel_date,
         response,
         catalog,
-        lambda stop: _stop_is_inside(boundary, stop),
+        lambda stop: _stop_is_inside(containment, stop),
         origin.timezone,
     )
 
@@ -163,16 +169,18 @@ def get_nightways_for_origin_by_locality(
         CoordinateOriginMetadataEnricher(locality_index),
     )
     boundary = resolve_origin_boundary(origin)
+    containment = OriginBoundaryContainment(boundary)
     response = request_origin_departures(
         origin,
         boundary,
         travel_date,
         candidate_stop_limit,
+        containment=containment,
     )
     trips = _collect_qualified_trips(
         response,
         travel_date,
-        lambda stop: _stop_is_inside(boundary, stop),
+        lambda stop: _stop_is_inside(containment, stop),
         origin.timezone,
     )
 
@@ -196,6 +204,7 @@ def request_origin_departures(
     boundary: OriginBoundary,
     travel_date: date,
     candidate_stop_limit: int = MAX_CANDIDATE_STOPS,
+    containment: OriginBoundaryContainment | None = None,
 ) -> dict:
     """Request detailed departures for bounded, core-mode candidate stops."""
 
@@ -206,7 +215,8 @@ def request_origin_departures(
     ):
         raise ValueError("candidate_stop_limit must be a positive integer")
 
-    candidates = _request_candidate_stops(boundary)
+    containment = _containment_for_boundary(boundary, containment)
+    candidates = _request_candidate_stops(boundary, containment)
     request_limit = min(candidate_stop_limit, MAX_CANDIDATE_STOPS)
 
     if len(candidates) <= MAX_CANDIDATE_STOPS:
@@ -271,6 +281,7 @@ def request_origin_departures(
                 stop_time.get("place"),
                 boundary,
                 batch,
+                containment,
             )
         )
 
@@ -451,15 +462,17 @@ def _dense_boarding_stop_is_eligible(
     stop,
     boundary: OriginBoundary,
     batch: CandidateBatch,
+    containment: OriginBoundaryContainment | None = None,
 ) -> bool:
     if not isinstance(stop, dict):
         return False
 
+    containment = _containment_for_boundary(boundary, containment)
     lat = stop.get("lat")
     lon = stop.get("lon")
     if (
         not _valid_coordinate(lat, lon)
-        or not boundary.contains(float(lat), float(lon))
+        or not containment.contains(float(lat), float(lon))
         or _coordinate_distance_metres(
             batch.center.lat,
             batch.center.lon,
@@ -529,7 +542,9 @@ def _parent_stop_id(stop: dict) -> str | None:
 
 def _request_candidate_stops(
     boundary: OriginBoundary,
+    containment: OriginBoundaryContainment | None = None,
 ) -> tuple[CandidateStop, ...]:
+    containment = _containment_for_boundary(boundary, containment)
     south, west, north, east = _boundary_bounds(boundary)
     query = urlencode(
         {
@@ -571,7 +586,7 @@ def _request_candidate_stops(
             or not isinstance(modes, list)
             or not core_modes.intersection(modes)
             or not _valid_coordinate(lat, lon)
-            or not boundary.contains(float(lat), float(lon))
+            or not containment.contains(float(lat), float(lon))
         ):
             continue
 
@@ -776,13 +791,27 @@ def _boundary_bounds(
     )
 
 
-def _stop_is_inside(boundary: OriginBoundary, stop: dict) -> bool:
+def _stop_is_inside(
+    containment: OriginBoundary | OriginBoundaryContainment,
+    stop: dict,
+) -> bool:
     lat = stop.get("lat")
     lon = stop.get("lon")
     return (
         _valid_coordinate(lat, lon)
-        and boundary.contains(float(lat), float(lon))
+        and containment.contains(float(lat), float(lon))
     )
+
+
+def _containment_for_boundary(
+    boundary: OriginBoundary,
+    containment: OriginBoundaryContainment | None,
+) -> OriginBoundaryContainment:
+    if containment is None:
+        return OriginBoundaryContainment(boundary)
+    if containment.boundary is not boundary:
+        raise ValueError("containment must belong to boundary")
+    return containment
 
 
 def _valid_coordinate(lat, lon) -> bool:

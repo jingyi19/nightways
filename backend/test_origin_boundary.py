@@ -12,6 +12,7 @@ from backend.boundaries import (
     BoundaryNotFoundError,
     BoundaryServiceError,
     OriginBoundary,
+    OriginBoundaryContainment,
     _request_nominatim_matches,
     resolve_origin_boundary,
 )
@@ -477,6 +478,99 @@ class BoundaryGeometryTests(unittest.TestCase):
         self.assertFalse(boundary.contains(51.098293, 13.680163))
 
 
+class OriginBoundaryContainmentTests(unittest.TestCase):
+
+    def test_outside_bounding_box_skips_exact_polygon_scan(self):
+        boundary = _resolved_test_boundary(_rectangle(10, 50, 12, 52))
+
+        with _exact_contains_spy() as exact_contains:
+            containment = OriginBoundaryContainment(boundary)
+
+            self.assertFalse(containment.contains(53, 11))
+
+        exact_contains.assert_not_called()
+
+    def test_inside_bounding_box_uses_exact_polygon_scan(self):
+        boundary = _resolved_test_boundary(_rectangle(10, 50, 12, 52))
+
+        with _exact_contains_spy() as exact_contains:
+            containment = OriginBoundaryContainment(boundary)
+
+            self.assertTrue(containment.contains(51, 11))
+
+        exact_contains.assert_called_once_with(boundary, 51.0, 11.0)
+
+    def test_bounding_box_edge_preserves_exact_boundary_semantics(self):
+        boundary = _resolved_test_boundary(_rectangle(10, 50, 12, 52))
+
+        with _exact_contains_spy() as exact_contains:
+            containment = OriginBoundaryContainment(boundary)
+
+            self.assertTrue(containment.contains(50, 11))
+
+        exact_contains.assert_called_once_with(boundary, 50.0, 11.0)
+
+    def test_repeated_exact_coordinate_scans_only_once(self):
+        boundary = _resolved_test_boundary(_rectangle(10, 50, 12, 52))
+
+        with _exact_contains_spy() as exact_contains:
+            containment = OriginBoundaryContainment(boundary)
+
+            self.assertTrue(containment.contains(51, 11))
+            self.assertTrue(containment.contains(51, 11))
+
+        exact_contains.assert_called_once_with(boundary, 51.0, 11.0)
+
+    def test_different_coordinates_do_not_share_cache_entries(self):
+        boundary = _resolved_test_boundary(_rectangle(10, 50, 12, 52))
+
+        with _exact_contains_spy() as exact_contains:
+            containment = OriginBoundaryContainment(boundary)
+
+            self.assertTrue(containment.contains(51, 11))
+            self.assertTrue(containment.contains(51.5, 11.5))
+
+        self.assertEqual(exact_contains.call_count, 2)
+
+    def test_cache_is_local_to_one_containment_instance(self):
+        boundary = _resolved_test_boundary(_rectangle(10, 50, 12, 52))
+
+        with _exact_contains_spy() as exact_contains:
+            first_request = OriginBoundaryContainment(boundary)
+            second_request = OriginBoundaryContainment(boundary)
+
+            self.assertTrue(first_request.contains(51, 11))
+            self.assertTrue(first_request.contains(51, 11))
+            self.assertTrue(second_request.contains(51, 11))
+
+        self.assertEqual(exact_contains.call_count, 2)
+
+    def test_exact_hole_and_multipolygon_semantics_are_unchanged(self):
+        boundary_with_hole = _resolved_test_boundary(
+            {
+                "type": "Polygon",
+                "coordinates": [
+                    _ring(0, 0, 10, 10),
+                    _ring(4, 4, 6, 6),
+                ],
+            }
+        )
+        multipolygon = _resolved_test_boundary(
+            _multipolygon(
+                _rectangle(0, 0, 1, 1),
+                _rectangle(10, 50, 12, 52),
+            )
+        )
+
+        hole_containment = OriginBoundaryContainment(boundary_with_hole)
+        multipolygon_containment = OriginBoundaryContainment(multipolygon)
+
+        self.assertTrue(hole_containment.contains(2, 2))
+        self.assertFalse(hole_containment.contains(5, 5))
+        self.assertTrue(multipolygon_containment.contains(51, 11))
+        self.assertFalse(multipolygon_containment.contains(25, 5))
+
+
 def _origin(name: str, country_code: str) -> ResolvedOrigin:
     return ResolvedOrigin(
         name=name,
@@ -560,6 +654,20 @@ def _resolved_test_boundary(geometry):
         ],
     ):
         return resolve_origin_boundary(_origin("Example", "DE"))
+
+
+def _exact_contains_spy():
+    exact_contains = OriginBoundary.contains
+    return patch.object(
+        OriginBoundary,
+        "contains",
+        autospec=True,
+        side_effect=lambda boundary, lat, lon: exact_contains(
+            boundary,
+            lat,
+            lon,
+        ),
+    )
 
 
 if __name__ == "__main__":
