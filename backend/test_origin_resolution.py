@@ -151,6 +151,91 @@ class OriginSelectionTests(unittest.TestCase):
 
 
     @patch("backend.transitous._request_place_matches")
+    def test_incomplete_urban_match_blocks_lower_level_fallback(self, request):
+
+        krakow = _place(
+            "Kraków",
+            None,
+            50.0619474,
+            19.9368564,
+            None,
+        )
+        request.return_value = [
+            krakow,
+            _place(
+                "Krakow",
+                "DE",
+                54.1241012,
+                12.7904098,
+                "Europe/Berlin",
+                category="hamlet",
+            ),
+        ]
+
+        with self.assertRaises(OriginNotFoundError):
+
+            resolve_origin("Krakow")
+
+
+    @patch("backend.transitous._request_place_matches")
+    def test_unrelated_incomplete_urban_match_does_not_block_lower_level(
+        self,
+        request,
+    ):
+
+        request.return_value = [
+            _place("Different", None, 50.0, 10.0, None),
+            _place(
+                "Example",
+                "DE",
+                51.0,
+                11.0,
+                "Europe/Berlin",
+                category="hamlet",
+            ),
+        ]
+
+        result = resolve_origin("Example")
+
+        self.assertEqual(result.country_code, "DE")
+        self.assertEqual((result.lat, result.lon), (51.0, 11.0))
+
+
+    @patch("backend.transitous._request_place_matches")
+    def test_unmatched_qualifier_does_not_block_lower_level(self, request):
+
+        incomplete_urban = _place("Example", "PL", 50.0, 20.0, None)
+        incomplete_urban["areas"] = [
+            {
+                "name": "Poland",
+                "adminLevel": 2,
+                "matched": True,
+            }
+        ]
+        german_hamlet = _place(
+            "Example",
+            "DE",
+            51.0,
+            11.0,
+            "Europe/Berlin",
+            category="hamlet",
+        )
+        german_hamlet["areas"] = [
+            {
+                "name": "Germany",
+                "adminLevel": 2,
+                "matched": True,
+            }
+        ]
+        request.return_value = [incomplete_urban, german_hamlet]
+
+        result = resolve_origin("Example, Germany")
+
+        self.assertEqual(result.country_code, "DE")
+        self.assertEqual((result.lat, result.lon), (51.0, 11.0))
+
+
+    @patch("backend.transitous._request_place_matches")
     def test_diacritic_equivalent_urban_candidates_remain_ambiguous(
         self,
         request,
@@ -173,6 +258,7 @@ class OriginSelectionTests(unittest.TestCase):
         self.assertEqual(_normalized_city_name("Liège"), "liege")
         self.assertEqual(_normalized_city_name("Malmö"), "malmo")
         self.assertEqual(_normalized_city_name("Košice"), "kosice")
+        self.assertEqual(_normalized_city_name("Kraków"), "krakow")
         self.assertNotEqual(_normalized_city_name("Łódź"), "lodz")
 
     def test_empty_city_is_rejected_without_a_request(self):

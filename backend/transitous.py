@@ -138,8 +138,9 @@ def resolve_origin(city_name: str) -> ResolvedOrigin:
     if not query:
         raise OriginResolutionError("City name cannot be empty.")
 
+    matches = _request_place_matches(query)
     candidates = []
-    for match in _request_place_matches(query):
+    for match in matches:
         candidate = _origin_from_match(match)
         if candidate is not None:
             candidates.append((candidate, match))
@@ -188,7 +189,18 @@ def resolve_origin(city_name: str) -> ResolvedOrigin:
             [candidate for candidate, _ in plausible_candidates],
         )
 
-    return plausible_candidates[0][0]
+    selected_candidate, selected_match = plausible_candidates[0]
+    if _is_lower_level_locality(selected_match) and any(
+        _is_incomplete_urban_name_match(
+            match,
+            normalized_name,
+            query_qualifiers,
+        )
+        for match in matches
+    ):
+        raise OriginNotFoundError(f"No European city found for {query!r}.")
+
+    return selected_candidate
 
 
 def _request_place_matches(city_name: str) -> list[dict]:
@@ -344,6 +356,38 @@ def _is_lower_level_locality(match: dict) -> bool:
         isinstance(category, str)
         and category in LOWER_LEVEL_LOCALITY_CATEGORIES
     )
+
+
+def _is_incomplete_urban_name_match(
+    match: dict,
+    normalized_city_name: str,
+    query_qualifiers: tuple[str, ...],
+) -> bool:
+    if (
+        not isinstance(match, dict)
+        or match.get("type") != "PLACE"
+        or not _is_urban_locality(match)
+    ):
+        return False
+
+    name = match.get("name")
+    if (
+        not isinstance(name, str)
+        or not name.strip()
+        or _normalized_city_name(name) != normalized_city_name
+        or not _matches_query_qualifiers(match, query_qualifiers)
+    ):
+        return False
+
+    country_code = match.get("country")
+    if (
+        isinstance(country_code, str)
+        and country_code.strip()
+        and country_code.strip().upper() not in EUROPEAN_COUNTRY_CODES
+    ):
+        return False
+
+    return _origin_from_match(match) is None
 
 
 def _represents_default_locality(
