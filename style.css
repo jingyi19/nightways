@@ -240,6 +240,19 @@ select:disabled {
     color: var(--white);
 }
 
+.mode-filter-button:disabled,
+.mode-filter-button:disabled:hover {
+    background: var(--blue-100);
+    color: var(--navy-700);
+    opacity: 0.78;
+}
+
+.mode-filter-button.is-active:disabled,
+.mode-filter-button.is-active:disabled:hover {
+    background: var(--navy-700);
+    color: var(--white);
+}
+
 .mode-filter-button:focus-visible {
     outline: 3px solid rgba(157, 185, 214, 0.65);
     outline-offset: 2px;
