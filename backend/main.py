@@ -22,7 +22,11 @@ from backend.transitous import (
     AmbiguousOriginError,
     OriginNotFoundError,
     OriginResolutionError,
+    OriginSuggestionQueryError,
+    OriginSuggestionServiceError,
+    OriginSuggestionTimeoutError,
     TransitousError,
+    find_origin_suggestions,
 )
 
 
@@ -160,6 +164,32 @@ def get_nightways(origin: str, date: str):
 
     except TransitousError as error:
         raise _api_error(error, 502, "transitous_failed") from error
+
+
+@app.get("/api/origin-suggestions")
+def get_origin_suggestions(q: str):
+    try:
+        return {
+            "suggestions": find_origin_suggestions(q),
+        }
+    except OriginSuggestionQueryError as error:
+        raise _api_error(
+            error,
+            400,
+            "origin_suggestions_invalid_query",
+        ) from error
+    except OriginSuggestionTimeoutError as error:
+        raise _api_error(
+            error,
+            504,
+            "origin_suggestions_timeout",
+        ) from error
+    except OriginSuggestionServiceError as error:
+        raise _api_error(
+            error,
+            502,
+            "origin_suggestions_failed",
+        ) from error
 
 
 def _api_error(error: Exception, status_code: int, code: str, **details):

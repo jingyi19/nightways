@@ -35,12 +35,31 @@
         >
             <label for="origin">From</label>
 
-            <input
-                id="origin"
-                type="text"
-                value="Dresden"
-                required
+            <div
+                id="origin-autocomplete"
+                class="origin-autocomplete"
             >
+                <input
+                    id="origin"
+                    type="text"
+                    value="Dresden"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-expanded="false"
+                    aria-controls="origin-suggestions"
+                    aria-haspopup="listbox"
+                    autocomplete="off"
+                    required
+                >
+
+                <ul
+                    id="origin-suggestions"
+                    class="origin-suggestions"
+                    role="listbox"
+                    aria-label="Origin suggestions"
+                    hidden
+                ></ul>
+            </div>
 
             <label for="date">Date</label>
 
