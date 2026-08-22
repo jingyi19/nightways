@@ -5,6 +5,9 @@ const resultsHeading = document.getElementById("results-heading");
 const destinationCount = document.getElementById("destination-count");
 const destinationList = document.getElementById("destination-list");
 const mapElement = document.getElementById("map");
+const resultsSection = document.getElementById("results");
+const searchForm = document.getElementById("search-form");
+const searchStatus = document.getElementById("search-status");
 const searchButton = document.getElementById("search-button");
 const originInput = document.getElementById("origin");
 const dateInput = document.getElementById("date");
@@ -12,6 +15,8 @@ const sortSelect = document.getElementById("destination-sort");
 const modeFilterButtons = document.querySelectorAll(
     ".mode-filter-button"
 );
+const SEARCH_BUTTON_LABEL =
+    searchButton.textContent.trim();
 
 const localDate = new Date();
 
@@ -471,7 +476,7 @@ function getServiceTiming(service) {
 function formatMode(mode) {
 
     if (mode === "COACH") {
-        return "Coach";
+        return "Bus";
     }
 
     if (TRAIN_SERVICE_MODES.has(mode)) {
@@ -1457,12 +1462,18 @@ function ensureDestinationOpen(card, destination, originName) {
 // LOAD NIGHTWAYS DATA
 // --------------------------------------------------
 
-function getNightwaysRequestUrl() {
+function getSubmittedSearch() {
 
-    const query = new URLSearchParams({
+    return {
         origin: originInput.value.trim(),
         date: dateInput.value
-    });
+    };
+}
+
+
+function getNightwaysRequestUrl(submittedSearch) {
+
+    const query = new URLSearchParams(submittedSearch);
 
     return `${API_ENDPOINT}?${query}`;
 }
@@ -1472,29 +1483,167 @@ const GENERIC_LOAD_ERROR =
     "Could not load overnight destinations.";
 
 
-class NightwaysApiError extends Error {}
+const NETWORK_LOAD_ERROR =
+    "Could not connect to Nightways. Check your network connection and try again.";
 
 
-async function getNightwaysErrorMessage(response) {
+const TEMPORARY_SERVICE_ERROR =
+    "Nightways is temporarily unable to search this origin. Please try again.";
+
+
+const EMPTY_RESULTS_MESSAGE =
+    "No direct overnight destinations were found for this date.";
+
+
+const NIGHTWAYS_ERROR_MESSAGES = Object.freeze({
+    origin_not_found:
+        "Nightways could not find this city. Check the spelling and try again.",
+    origin_ambiguous:
+        "Multiple places match this origin. Add a country or region and try again.",
+    invalid_origin:
+        "Enter a valid European city and try again.",
+    origin_candidate_limit_exceeded:
+        "Nightways cannot safely search this origin yet. Please try another nearby city.",
+    origin_boundary_not_found:
+        "Nightways found this city, but could not determine its search area. Please try another nearby city.",
+    origin_boundary_ambiguous:
+        "Nightways found this city, but could not determine its search area. Please try another nearby city.",
+    origin_boundary_service_failed:
+        TEMPORARY_SERVICE_ERROR,
+    transitous_failed:
+        TEMPORARY_SERVICE_ERROR,
+    gisco_dataset_unavailable:
+        TEMPORARY_SERVICE_ERROR,
+    gisco_dataset_invalid:
+        TEMPORARY_SERVICE_ERROR,
+    locality_resolution_failed:
+        TEMPORARY_SERVICE_ERROR
+});
+
+
+class NightwaysApiError extends Error {
+
+    constructor(message, code = null, status = null) {
+
+        super(message);
+        this.name = "NightwaysApiError";
+        this.code = code;
+        this.status = status;
+    }
+}
+
+
+class NightwaysNetworkError extends Error {
+
+    constructor() {
+
+        super(NETWORK_LOAD_ERROR);
+        this.name = "NightwaysNetworkError";
+    }
+}
+
+
+function setDestinationControlsDisabled(disabled) {
+
+    for (const button of modeFilterButtons) {
+        button.disabled = disabled;
+    }
+
+    sortSelect.disabled = disabled;
+}
+
+
+function updateDestinationControlsAvailability() {
+
+    setDestinationControlsDisabled(
+        !nightwaysData || currentSearchController !== null
+    );
+}
+
+
+function showSearchStatus(message, isError = false) {
+
+    searchStatus.hidden = false;
+    searchStatus.classList.toggle("is-error", isError);
+    searchStatus.setAttribute(
+        "role",
+        isError ? "alert" : "status"
+    );
+    searchStatus.setAttribute(
+        "aria-live",
+        isError ? "assertive" : "polite"
+    );
+    searchStatus.textContent = message;
+}
+
+
+function clearSearchStatus() {
+
+    searchStatus.textContent = "";
+    searchStatus.hidden = true;
+    searchStatus.classList.remove("is-error");
+    searchStatus.setAttribute("role", "status");
+    searchStatus.setAttribute("aria-live", "polite");
+}
+
+
+function setSearchPending(pending, submittedOrigin = "") {
+
+    originInput.disabled = pending;
+    dateInput.disabled = pending;
+    searchButton.disabled = pending;
+    searchButton.textContent = pending
+        ? "Searching…"
+        : SEARCH_BUTTON_LABEL;
+    resultsSection.setAttribute(
+        "aria-busy",
+        String(pending)
+    );
+
+    if (pending) {
+        showSearchStatus(
+            `Searching overnight routes from ${submittedOrigin}…`
+        );
+    }
+
+    updateDestinationControlsAvailability();
+}
+
+
+async function getNightwaysApiError(response) {
 
     try {
 
         const payload = await response.json();
-        const message = payload?.detail?.message;
+        const code = payload?.detail?.code;
 
         if (
-            typeof message === "string" &&
-            message.trim()
+            typeof code === "string" &&
+            Object.prototype.hasOwnProperty.call(
+                NIGHTWAYS_ERROR_MESSAGES,
+                code
+            )
         ) {
-            return message.trim();
+            return new NightwaysApiError(
+                NIGHTWAYS_ERROR_MESSAGES[code],
+                code,
+                response.status
+            );
         }
 
     } catch (error) {
-
-        return GENERIC_LOAD_ERROR;
+        return new NightwaysApiError(
+            GENERIC_LOAD_ERROR,
+            null,
+            response.status
+        );
     }
 
-    return GENERIC_LOAD_ERROR;
+    return new NightwaysApiError(
+        GENERIC_LOAD_ERROR,
+        null,
+        response.status
+    );
 }
 
 
@@ -1506,14 +1655,22 @@ async function loadNightwaysData(reloadData = true) {
 
 
     let requestController = null;
+    let submittedSearch = null;
 
     if (reloadData) {
+
+        submittedSearch = getSubmittedSearch();
 
         currentSearchController?.abort();
 
         requestController = new AbortController();
         currentSearchController = requestController;
         nightwaysData = null;
+
+        setSearchPending(
+            true,
+            submittedSearch.origin
+        );
 
         resultsHeading.textContent =
             "Overnight destinations";
@@ -1524,8 +1681,9 @@ async function loadNightwaysData(reloadData = true) {
         );
     }
 
-    destinationCount.textContent =
-        "Loading...";
+    if (reloadData) {
+        destinationCount.textContent = "";
+    }
 
     clearSelectedDestination();
 
@@ -1545,21 +1703,30 @@ async function loadNightwaysData(reloadData = true) {
 
         if (reloadData) {
 
-            const response =
-                await fetch(
-                    getNightwaysRequestUrl(),
+            let response;
+
+            try {
+                response = await fetch(
+                    getNightwaysRequestUrl(
+                        submittedSearch
+                    ),
                     {
                         signal: requestController.signal
                     }
                 );
+            } catch (error) {
+                if (error?.name === "AbortError") {
+                    throw error;
+                }
+
+                throw new NightwaysNetworkError();
+            }
 
 
             if (!response.ok) {
 
-                throw new NightwaysApiError(
-                    await getNightwaysErrorMessage(
-                        response
-                    )
+                throw await getNightwaysApiError(
+                    response
                 );
             }
 
@@ -1615,7 +1782,10 @@ async function loadNightwaysData(reloadData = true) {
             `Overnight destinations from ${originName}`;
 
         destinationCount.textContent =
-            `${visibleDestinations.length} direct overnight destinations`;
+            Array.isArray(data.destinations) &&
+            data.destinations.length === 0
+                ? EMPTY_RESULTS_MESSAGE
+                : `${visibleDestinations.length} direct overnight destinations`;
 
 
         const mapBounds =
@@ -1960,6 +2130,11 @@ async function loadNightwaysData(reloadData = true) {
         }
 
 
+        if (reloadData) {
+            clearSearchStatus();
+        }
+
+
     } catch (error) {
 
         if (
@@ -1975,6 +2150,7 @@ async function loadNightwaysData(reloadData = true) {
 
 
         nightwaysData = null;
+        updateDestinationControlsAvailability();
         destinationList.innerHTML = "";
         destinationMarkers.clearLayers();
         originMarkers.clearLayers();
@@ -1988,14 +2164,22 @@ async function loadNightwaysData(reloadData = true) {
             DEFAULT_MAP_ZOOM
         );
 
-        if (!(error instanceof NightwaysApiError)) {
+        if (
+            !(error instanceof NightwaysApiError) &&
+            !(error instanceof NightwaysNetworkError)
+        ) {
             console.error(error);
         }
 
-        destinationCount.textContent =
-            error instanceof NightwaysApiError
+        destinationCount.textContent = "";
+
+        showSearchStatus(
+            error instanceof NightwaysApiError ||
+            error instanceof NightwaysNetworkError
                 ? error.message
-                : GENERIC_LOAD_ERROR;
+                : GENERIC_LOAD_ERROR,
+            true
+        );
 
     } finally {
 
@@ -2004,18 +2188,55 @@ async function loadNightwaysData(reloadData = true) {
             currentSearchController === requestController
         ) {
             currentSearchController = null;
+
+            if (
+                !searchStatus.hidden &&
+                !searchStatus.classList.contains(
+                    "is-error"
+                )
+            ) {
+                clearSearchStatus();
+            }
+
+            setSearchPending(false);
         }
     }
 }
 
 
 // --------------------------------------------------
-// SEARCH BUTTON
+// SEARCH FORM
 // --------------------------------------------------
 
-searchButton.addEventListener(
-    "click",
-    () => {
+searchForm.addEventListener(
+    "keydown",
+    event => {
+
+        if (
+            event.key !== "Enter" ||
+            (
+                event.target !== originInput &&
+                event.target !== dateInput
+            )
+        ) {
+            return;
+        }
+
+        event.preventDefault();
+        searchForm.requestSubmit();
+    }
+);
+
+
+searchForm.addEventListener(
+    "submit",
+    event => {
+
+        event.preventDefault();
+
+        if (currentSearchController) {
+            return;
+        }
 
         loadNightwaysData(true);
     }
@@ -2070,5 +2291,6 @@ sortSelect.addEventListener(
 // --------------------------------------------------
 
 updateModeFilterButtons();
+updateDestinationControlsAvailability();
 
 loadNightwaysData(true);

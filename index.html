@@ -28,7 +28,8 @@
             </p>
         </header>
 
-        <section
+        <form
+            id="search-form"
             class="search-panel"
             aria-label="Search overnight destinations"
         >
@@ -38,6 +39,7 @@
                 id="origin"
                 type="text"
                 value="Dresden"
+                required
             >
 
             <label for="date">Date</label>
@@ -45,12 +47,25 @@
             <input
                 id="date"
                 type="date"
+                required
             >
 
-            <button id="search-button">
+            <button
+                id="search-button"
+                type="submit"
+            >
                 Explore tonight
             </button>
-        </section>
+
+            <p
+                id="search-status"
+                class="search-status"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                hidden
+            ></p>
+        </form>
 
         <div class="destination-controls">
             <div
@@ -82,7 +97,7 @@
                     data-mode="COACH"
                     aria-pressed="false"
                 >
-                    Coach
+                    Bus
                 </button>
             </div>
 
@@ -111,12 +126,13 @@
         <!-- Europe map -->
         <div id="map"></div>
 
-        <section id="results">
+        <section
+            id="results"
+            aria-busy="false"
+        >
             <h2 id="results-heading">Overnight destinations</h2>
 
-            <p id="destination-count">
-                Loading...
-            </p>
+            <p id="destination-count"></p>
 
             <div id="destination-list"></div>
         </section>
