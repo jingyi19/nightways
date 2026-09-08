@@ -1,7 +1,10 @@
+import os
 from datetime import date as calendar_date
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from backend.boundaries import (
@@ -27,9 +30,78 @@ from backend.transitous import (
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-INDEX_FILE = PROJECT_ROOT / "index.html"
-STYLE_FILE = PROJECT_ROOT / "style.css"
-SCRIPT_FILE = PROJECT_ROOT / "app.js"
+FRONTEND_ROOT = PROJECT_ROOT / "frontend"
+INDEX_FILE = FRONTEND_ROOT / "index.html"
+STYLE_FILE = FRONTEND_ROOT / "style.css"
+SCRIPT_FILE = FRONTEND_ROOT / "app.js"
+CORS_ORIGINS_ENV = "NIGHTWAYS_CORS_ORIGINS"
+CORS_ORIGINS_ERROR = (
+    f"{CORS_ORIGINS_ENV} must contain comma-separated HTTP(S) origins "
+    "without wildcards, credentials, paths, queries, or fragments."
+)
+
+
+def _normalize_cors_origin(value: str) -> str:
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError as error:
+        raise ValueError(CORS_ORIGINS_ERROR) from error
+
+    hostname = parsed.hostname
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not hostname
+        or "*" in hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError(CORS_ORIGINS_ERROR)
+
+    hostname = hostname.lower()
+    if ":" in hostname:
+        hostname = f"[{hostname}]"
+
+    is_default_port = (
+        parsed.scheme == "http" and port == 80
+    ) or (
+        parsed.scheme == "https" and port == 443
+    )
+    port_suffix = "" if port is None or is_default_port else f":{port}"
+    return f"{parsed.scheme}://{hostname}{port_suffix}"
+
+
+def configured_cors_origins(environ=None) -> list[str]:
+    """Return the configured exact browser origins in first-seen order."""
+
+    environment = os.environ if environ is None else environ
+    configured = environment.get(CORS_ORIGINS_ENV, "")
+    origins = []
+    seen = set()
+    for value in configured.split(","):
+        value = value.strip()
+        if not value:
+            continue
+
+        origin = _normalize_cors_origin(value)
+        if origin and origin not in seen:
+            origins.append(origin)
+            seen.add(origin)
+    return origins
+
+
+def configure_cors(application: FastAPI, environ=None) -> None:
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=configured_cors_origins(environ),
+        allow_credentials=False,
+        allow_methods=["GET"],
+        allow_headers=[],
+    )
+
 
 # English names for the countries present in GISCO LAU 2024 and supported by
 # Nightways V1. Keep legacy API spellings stable at this public boundary.
@@ -75,6 +147,8 @@ app = FastAPI(
     title="Nightways API",
     version="0.1.0"
 )
+
+configure_cors(app)
 
 
 @app.get("/", include_in_schema=False)

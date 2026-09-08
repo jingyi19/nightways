@@ -1,5 +1,60 @@
-const API_ENDPOINT =
-    "/api/nightways";
+const NIGHTWAYS_API_PATH = "/api/nightways";
+const LOCAL_API_HOSTNAMES = new Set([
+    "localhost",
+    "127.0.0.1",
+    "[::1]"
+]);
+
+
+function resolveNightwaysApiEndpoint(rawBaseUrl) {
+
+    const configuredBaseUrl = rawBaseUrl.trim();
+
+    if (!configuredBaseUrl) {
+        return NIGHTWAYS_API_PATH;
+    }
+
+
+    let baseUrl;
+
+    try {
+        baseUrl = new URL(configuredBaseUrl);
+    } catch {
+        throw new Error(
+            "Nightways API base URL must be an absolute HTTP(S) origin."
+        );
+    }
+
+
+    if (
+        !["http:", "https:"].includes(baseUrl.protocol) ||
+        baseUrl.username ||
+        baseUrl.password ||
+        baseUrl.pathname !== "/" ||
+        baseUrl.search ||
+        baseUrl.hash
+    ) {
+        throw new Error(
+            "Nightways API base URL must be an HTTP(S) origin " +
+            "without credentials, a path, query, or fragment."
+        );
+    }
+
+
+    return `${baseUrl.origin}${NIGHTWAYS_API_PATH}`;
+}
+
+
+const configuredApiBaseUrl =
+    LOCAL_API_HOSTNAMES.has(window.location.hostname)
+        ? ""
+        : document.querySelector(
+            'meta[name="nightways-api-base-url"]'
+        )?.content ?? "";
+
+const API_ENDPOINT = resolveNightwaysApiEndpoint(
+    configuredApiBaseUrl
+);
 
 const resultsHeading = document.getElementById("results-heading");
 const destinationCount = document.getElementById("destination-count");
