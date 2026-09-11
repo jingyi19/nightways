@@ -12,7 +12,7 @@
     <title>Nightways</title>
 
     <!-- Your own stylesheet -->
-    <link rel="stylesheet" href="style.css?v=journey-loader-1">
+    <link rel="stylesheet" href="style.css?v=journey-loader-map-1">
 
     <!-- Leaflet map stylesheet -->
     <link
@@ -128,10 +128,8 @@
         </div>
 
         <!-- Europe map -->
-        <div id="map"></div>
-
-        <section id="results">
-            <h2 id="results-heading">Overnight destinations</h2>
+        <div class="map-stage">
+            <div id="map"></div>
 
             <div
                 id="search-loading-panel"
@@ -264,6 +262,10 @@
                     Preparing your journey...
                 </p>
             </div>
+        </div>
+
+        <section id="results">
+            <h2 id="results-heading">Overnight destinations</h2>
 
             <div
                 id="results-content"
@@ -280,7 +282,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <!-- Your own JavaScript -->
-    <script src="app.js?v=journey-loader-1"></script>
+    <script src="app.js?v=journey-loader-map-1"></script>
 
 </body>
 

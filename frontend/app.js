@@ -81,6 +81,8 @@ const SEARCH_BUTTON_LABEL =
 const SEARCH_LOADING_LIMIT = 90;
 const SEARCH_LOADING_TICK_MS = 180;
 const SEARCH_LOADING_COMPLETION_MS = 320;
+const SEARCH_LOADING_FADE_MS = 240;
+const SEARCH_LOADING_PAINT_TIMEOUT_MS = 100;
 const reducedMotionQuery = window.matchMedia(
     "(prefers-reduced-motion: reduce)"
 );
@@ -1718,21 +1720,31 @@ function closeSearchLoading(state, completed) {
         window.clearTimeout(state.completionTimerId);
     }
 
+    if (state.fadeTimerId !== null) {
+        window.clearTimeout(state.fadeTimerId);
+    }
+
     const resolveCompletion = state.resolveCompletion;
+    const resolveFade = state.resolveFade;
 
     state.progressTimerId = null;
     state.completionTimerId = null;
+    state.fadeTimerId = null;
     state.resolveCompletion = null;
+    state.resolveFade = null;
     currentSearchLoading = null;
 
+    searchLoadingPanel.classList.remove("is-fading");
     searchLoadingPanel.hidden = true;
     resultsContent.hidden = false;
+    mapElement.removeAttribute("inert");
     searchLoadingTrack.style.setProperty(
         "--search-progress",
         "0%"
     );
 
     resolveCompletion?.(completed);
+    resolveFade?.(completed);
 }
 
 
@@ -1747,14 +1759,19 @@ function startSearchLoading(requestController) {
         progress: 0,
         progressTimerId: null,
         completionTimerId: null,
+        fadeTimerId: null,
         resolveCompletion: null,
-        completionPromise: null
+        resolveFade: null,
+        completionPromise: null,
+        fadePromise: null
     };
 
     currentSearchLoading = state;
 
     clearSearchStatus();
     resultsContent.hidden = true;
+    mapElement.setAttribute("inert", "");
+    searchLoadingPanel.classList.remove("is-fading");
     searchLoadingPanel.hidden = false;
     setSearchLoadingProgress(state, 0);
 
@@ -1799,7 +1816,15 @@ function finishSearchLoading(requestController) {
 
         state.resolveCompletion = resolve;
         state.completionTimerId = window.setTimeout(
-            () => closeSearchLoading(state, true),
+            () => {
+                if (currentSearchLoading !== state) {
+                    return;
+                }
+
+                state.completionTimerId = null;
+                state.resolveCompletion = null;
+                resolve(true);
+            },
             reducedMotionQuery.matches
                 ? 80
                 : SEARCH_LOADING_COMPLETION_MS
@@ -1807,6 +1832,82 @@ function finishSearchLoading(requestController) {
     });
 
     return state.completionPromise;
+}
+
+
+function waitForSearchLoadingPaint() {
+
+    return new Promise(resolve => {
+
+        let firstFrameId = null;
+        let secondFrameId = null;
+        let settled = false;
+
+        const finish = () => {
+            if (settled) {
+                return;
+            }
+
+            settled = true;
+            window.clearTimeout(timeoutId);
+
+            if (firstFrameId !== null) {
+                window.cancelAnimationFrame(firstFrameId);
+            }
+
+            if (secondFrameId !== null) {
+                window.cancelAnimationFrame(secondFrameId);
+            }
+
+            resolve();
+        };
+
+        const timeoutId = window.setTimeout(
+            finish,
+            SEARCH_LOADING_PAINT_TIMEOUT_MS
+        );
+
+        firstFrameId = window.requestAnimationFrame(() => {
+            firstFrameId = null;
+            secondFrameId = window.requestAnimationFrame(
+                finish
+            );
+        });
+    });
+}
+
+
+function fadeSearchLoading(requestController) {
+
+    const state = currentSearchLoading;
+
+    if (
+        !state ||
+        state.requestController !== requestController
+    ) {
+        return Promise.resolve(false);
+    }
+
+    if (state.fadePromise) {
+        return state.fadePromise;
+    }
+
+    if (reducedMotionQuery.matches) {
+        closeSearchLoading(state, true);
+        return Promise.resolve(true);
+    }
+
+    state.fadePromise = new Promise(resolve => {
+
+        state.resolveFade = resolve;
+        searchLoadingPanel.classList.add("is-fading");
+        state.fadeTimerId = window.setTimeout(
+            () => closeSearchLoading(state, true),
+            SEARCH_LOADING_FADE_MS
+        );
+    });
+
+    return state.fadePromise;
 }
 
 
@@ -1891,6 +1992,7 @@ async function loadNightwaysData(reloadData = true) {
 
     let requestController = null;
     let submittedSearch = null;
+    let loadingCompletionPromise = null;
 
     if (reloadData) {
 
@@ -2005,20 +2107,11 @@ async function loadNightwaysData(reloadData = true) {
 
 
         if (reloadData) {
-            const loadingCompleted =
-                await finishSearchLoading(
+            nightwaysData = data;
+            loadingCompletionPromise =
+                finishSearchLoading(
                     requestController
                 );
-
-            if (
-                !loadingCompleted ||
-                currentSearchController !==
-                    requestController
-            ) {
-                return;
-            }
-
-            nightwaysData = data;
         }
 
 
@@ -2381,6 +2474,39 @@ async function loadNightwaysData(reloadData = true) {
 
 
         if (reloadData) {
+            const loadingCompleted =
+                await loadingCompletionPromise;
+
+            if (
+                !loadingCompleted ||
+                currentSearchController !==
+                    requestController
+            ) {
+                return;
+            }
+
+            await waitForSearchLoadingPaint();
+
+            if (
+                currentSearchController !==
+                    requestController
+            ) {
+                return;
+            }
+
+            const loadingFaded =
+                await fadeSearchLoading(
+                    requestController
+                );
+
+            if (
+                !loadingFaded ||
+                currentSearchController !==
+                    requestController
+            ) {
+                return;
+            }
+
             clearSearchStatus();
         }
 

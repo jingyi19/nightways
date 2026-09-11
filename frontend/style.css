@@ -312,16 +312,22 @@ select:disabled {
 /* Results */
 
 .journey-loader {
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+
     display: grid;
     place-items: center;
+    align-content: center;
     gap: 10px;
 
-    min-height: 210px;
-    margin-top: 22px;
+    min-height: 0;
+    margin: 0;
     padding: 28px 30px 24px;
 
     overflow: hidden;
     isolation: isolate;
+    opacity: 1;
 
     color: var(--blue-100);
     background:
@@ -336,11 +342,17 @@ select:disabled {
             var(--navy-900)
         );
 
-    border: 1px solid rgba(200, 217, 232, 0.16);
-    border-radius: 18px;
+    border: 0;
+    border-radius: inherit;
 
-    box-shadow:
-        0 16px 34px rgba(7, 20, 38, 0.16);
+    box-shadow: none;
+
+    transition:
+        opacity 0.24s ease;
+}
+
+.journey-loader.is-fading {
+    opacity: 0;
 }
 
 .journey-loader[hidden],
@@ -875,7 +887,6 @@ select:disabled {
     }
 
     .journey-loader {
-        min-height: 188px;
         padding: 24px 14px 20px;
     }
 
@@ -903,6 +914,10 @@ select:disabled {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
+    .journey-loader {
+        transition: none;
+    }
 
     .journey-loader__travelled,
     .journey-loader__train {
@@ -940,7 +955,10 @@ body {
 
 /* Nightways map */
 
-#map {
+.map-stage {
+  position: relative;
+  isolation: isolate;
+
   width: 100%;
   height: 440px;
 
@@ -951,6 +969,25 @@ body {
 
   box-shadow:
     0 16px 40px rgba(5, 20, 40, 0.12);
+}
+
+#map {
+  position: relative;
+  z-index: 0;
+
+  width: 100%;
+  height: 100%;
+
+  margin: 0;
+
+  border-radius: inherit;
+  overflow: hidden;
+
+  box-shadow: none;
+}
+
+#map[inert] {
+  pointer-events: none;
 }
 
 /* Nightways origin pin */
