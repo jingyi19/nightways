@@ -12,7 +12,7 @@
     <title>Nightways</title>
 
     <!-- Your own stylesheet -->
-    <link rel="stylesheet" href="style.css?v=783d7b3">
+    <link rel="stylesheet" href="style.css?v=journey-loader-1">
 
     <!-- Leaflet map stylesheet -->
     <link
@@ -130,15 +130,149 @@
         <!-- Europe map -->
         <div id="map"></div>
 
-        <section
-            id="results"
-            aria-busy="false"
-        >
+        <section id="results">
             <h2 id="results-heading">Overnight destinations</h2>
 
-            <p id="destination-count"></p>
+            <div
+                id="search-loading-panel"
+                class="journey-loader"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                hidden
+            >
+                <div
+                    id="search-loading-track"
+                    class="journey-loader__route"
+                    aria-hidden="true"
+                >
+                    <div class="journey-loader__track">
+                        <span class="journey-loader__sleepers"></span>
+                        <span class="journey-loader__rails"></span>
+                        <span class="journey-loader__travelled"></span>
 
-            <div id="destination-list"></div>
+                        <span class="journey-loader__train">
+                            <svg
+                                class="journey-loader__train-svg"
+                                viewBox="0 0 132 74"
+                                focusable="false"
+                            >
+                                <g class="journey-loader__steam">
+                                    <circle
+                                        class="journey-loader__steam-puff journey-loader__steam-puff--one"
+                                        cx="97"
+                                        cy="13"
+                                        r="4"
+                                    ></circle>
+                                    <circle
+                                        class="journey-loader__steam-puff journey-loader__steam-puff--two"
+                                        cx="105"
+                                        cy="8"
+                                        r="5"
+                                    ></circle>
+                                </g>
+
+                                <g class="journey-loader__engine">
+                                    <path
+                                        d="M12 53h107l11 9v4H5v-6l7-7Z"
+                                        fill="currentColor"
+                                    ></path>
+                                    <rect
+                                        x="42"
+                                        y="34"
+                                        width="65"
+                                        height="25"
+                                        rx="11"
+                                        fill="currentColor"
+                                    ></rect>
+                                    <path
+                                        d="M91 34V21h19v13H91Zm-4-17h27l-4 6H91l-4-6Z"
+                                        fill="currentColor"
+                                    ></path>
+                                    <path
+                                        d="M14 20h30v39H14V20Zm-4-5h38v7H10v-7Z"
+                                        fill="currentColor"
+                                    ></path>
+                                    <rect
+                                        class="journey-loader__window"
+                                        x="22"
+                                        y="27"
+                                        width="14"
+                                        height="12"
+                                        rx="2"
+                                    ></rect>
+                                    <circle
+                                        class="journey-loader__lamp"
+                                        cx="122"
+                                        cy="49"
+                                        r="3.5"
+                                    ></circle>
+                                </g>
+
+                                <g class="journey-loader__wheels">
+                                    <circle
+                                        class="journey-loader__wheel"
+                                        cx="30"
+                                        cy="62"
+                                        r="9"
+                                    ></circle>
+                                    <circle
+                                        class="journey-loader__wheel"
+                                        cx="66"
+                                        cy="62"
+                                        r="9"
+                                    ></circle>
+                                    <circle
+                                        class="journey-loader__wheel"
+                                        cx="105"
+                                        cy="62"
+                                        r="9"
+                                    ></circle>
+                                    <path
+                                        class="journey-loader__wheel-rod"
+                                        d="M30 62h75"
+                                    ></path>
+                                </g>
+                            </svg>
+                        </span>
+
+                        <svg
+                            class="journey-loader__station"
+                            viewBox="0 0 42 76"
+                            focusable="false"
+                            aria-hidden="true"
+                        >
+                            <path
+                                d="M21 72V25M8 72h26M11 13h20v15H11z"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="3"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            ></path>
+                            <circle
+                                class="journey-loader__station-light"
+                                cx="21"
+                                cy="20.5"
+                                r="3.5"
+                            ></circle>
+                        </svg>
+                    </div>
+                </div>
+
+                <p class="journey-loader__message">
+                    Preparing your journey...
+                </p>
+            </div>
+
+            <div
+                id="results-content"
+                aria-busy="false"
+            >
+                <p id="destination-count"></p>
+
+                <div id="destination-list"></div>
+            </div>
         </section>
     </main>
 
@@ -146,7 +280,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <!-- Your own JavaScript -->
-    <script src="app.js?v=static-frontend-1"></script>
+    <script src="app.js?v=journey-loader-1"></script>
 
 </body>
 

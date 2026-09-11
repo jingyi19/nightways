@@ -60,10 +60,16 @@ const resultsHeading = document.getElementById("results-heading");
 const destinationCount = document.getElementById("destination-count");
 const destinationList = document.getElementById("destination-list");
 const mapElement = document.getElementById("map");
-const resultsSection = document.getElementById("results");
+const resultsContent = document.getElementById("results-content");
 const searchForm = document.getElementById("search-form");
 const searchStatus = document.getElementById("search-status");
 const searchButton = document.getElementById("search-button");
+const searchLoadingPanel = document.getElementById(
+    "search-loading-panel"
+);
+const searchLoadingTrack = document.getElementById(
+    "search-loading-track"
+);
 const originInput = document.getElementById("origin");
 const dateInput = document.getElementById("date");
 const sortSelect = document.getElementById("destination-sort");
@@ -72,6 +78,12 @@ const modeFilterButtons = document.querySelectorAll(
 );
 const SEARCH_BUTTON_LABEL =
     searchButton.textContent.trim();
+const SEARCH_LOADING_LIMIT = 90;
+const SEARCH_LOADING_TICK_MS = 180;
+const SEARCH_LOADING_COMPLETION_MS = 320;
+const reducedMotionQuery = window.matchMedia(
+    "(prefers-reduced-motion: reduce)"
+);
 
 const localDate = new Date();
 
@@ -119,6 +131,7 @@ let activeSort =
     DESTINATION_SORTS.EARLIEST_ARRIVAL;
 let nightwaysData = null;
 let currentSearchController = null;
+let currentSearchLoading = null;
 let selectedDestinationView = null;
 
 
@@ -1642,7 +1655,180 @@ function clearSearchStatus() {
 }
 
 
-function setSearchPending(pending, submittedOrigin = "") {
+function setSearchLoadingProgress(state, progress) {
+
+    if (currentSearchLoading !== state) {
+        return;
+    }
+
+    const boundedProgress = Math.max(
+        0,
+        Math.min(100, progress)
+    );
+
+    state.progress = boundedProgress;
+    searchLoadingTrack.style.setProperty(
+        "--search-progress",
+        `${boundedProgress}%`
+    );
+}
+
+
+function advanceSearchLoading(state) {
+
+    if (currentSearchLoading !== state) {
+        return;
+    }
+
+    const remaining =
+        SEARCH_LOADING_LIMIT - state.progress;
+
+    if (remaining <= 0.25) {
+        setSearchLoadingProgress(
+            state,
+            SEARCH_LOADING_LIMIT
+        );
+        state.progressTimerId = null;
+        return;
+    }
+
+    setSearchLoadingProgress(
+        state,
+        state.progress + Math.max(0.25, remaining * 0.075)
+    );
+
+    state.progressTimerId = window.setTimeout(
+        () => advanceSearchLoading(state),
+        SEARCH_LOADING_TICK_MS
+    );
+}
+
+
+function closeSearchLoading(state, completed) {
+
+    if (currentSearchLoading !== state) {
+        return;
+    }
+
+    if (state.progressTimerId !== null) {
+        window.clearTimeout(state.progressTimerId);
+    }
+
+    if (state.completionTimerId !== null) {
+        window.clearTimeout(state.completionTimerId);
+    }
+
+    const resolveCompletion = state.resolveCompletion;
+
+    state.progressTimerId = null;
+    state.completionTimerId = null;
+    state.resolveCompletion = null;
+    currentSearchLoading = null;
+
+    searchLoadingPanel.hidden = true;
+    resultsContent.hidden = false;
+    searchLoadingTrack.style.setProperty(
+        "--search-progress",
+        "0%"
+    );
+
+    resolveCompletion?.(completed);
+}
+
+
+function startSearchLoading(requestController) {
+
+    if (currentSearchLoading) {
+        closeSearchLoading(currentSearchLoading, false);
+    }
+
+    const state = {
+        requestController,
+        progress: 0,
+        progressTimerId: null,
+        completionTimerId: null,
+        resolveCompletion: null,
+        completionPromise: null
+    };
+
+    currentSearchLoading = state;
+
+    clearSearchStatus();
+    resultsContent.hidden = true;
+    searchLoadingPanel.hidden = false;
+    setSearchLoadingProgress(state, 0);
+
+    if (reducedMotionQuery.matches) {
+        setSearchLoadingProgress(
+            state,
+            SEARCH_LOADING_LIMIT / 2
+        );
+        return;
+    }
+
+    state.progressTimerId = window.setTimeout(
+        () => advanceSearchLoading(state),
+        SEARCH_LOADING_TICK_MS
+    );
+}
+
+
+function finishSearchLoading(requestController) {
+
+    const state = currentSearchLoading;
+
+    if (
+        !state ||
+        state.requestController !== requestController
+    ) {
+        return Promise.resolve(false);
+    }
+
+    if (state.completionPromise) {
+        return state.completionPromise;
+    }
+
+    if (state.progressTimerId !== null) {
+        window.clearTimeout(state.progressTimerId);
+        state.progressTimerId = null;
+    }
+
+    setSearchLoadingProgress(state, 100);
+
+    state.completionPromise = new Promise(resolve => {
+
+        state.resolveCompletion = resolve;
+        state.completionTimerId = window.setTimeout(
+            () => closeSearchLoading(state, true),
+            reducedMotionQuery.matches
+                ? 80
+                : SEARCH_LOADING_COMPLETION_MS
+        );
+    });
+
+    return state.completionPromise;
+}
+
+
+function stopSearchLoading(requestController = null) {
+
+    const state = currentSearchLoading;
+
+    if (
+        !state ||
+        (
+            requestController &&
+            state.requestController !== requestController
+        )
+    ) {
+        return;
+    }
+
+    closeSearchLoading(state, false);
+}
+
+
+function setSearchPending(pending) {
 
     originInput.disabled = pending;
     dateInput.disabled = pending;
@@ -1650,16 +1836,10 @@ function setSearchPending(pending, submittedOrigin = "") {
     searchButton.textContent = pending
         ? "Searching…"
         : SEARCH_BUTTON_LABEL;
-    resultsSection.setAttribute(
+    resultsContent.setAttribute(
         "aria-busy",
         String(pending)
     );
-
-    if (pending) {
-        showSearchStatus(
-            `Searching overnight routes from ${submittedOrigin}…`
-        );
-    }
 
     updateDestinationControlsAvailability();
 }
@@ -1722,10 +1902,8 @@ async function loadNightwaysData(reloadData = true) {
         currentSearchController = requestController;
         nightwaysData = null;
 
-        setSearchPending(
-            true,
-            submittedSearch.origin
-        );
+        setSearchPending(true);
+        startSearchLoading(requestController);
 
         resultsHeading.textContent =
             "Overnight destinations";
@@ -1795,7 +1973,6 @@ async function loadNightwaysData(reloadData = true) {
                 return;
             }
 
-            nightwaysData = data;
         }
 
 
@@ -1821,16 +1998,34 @@ async function loadNightwaysData(reloadData = true) {
             longitude
         ];
 
-        renderOriginMarker(
-            originName,
-            originCoordinates
-        );
-
-
         const visibleDestinations =
             getVisibleSortedDestinations(
                 data.destinations
             );
+
+
+        if (reloadData) {
+            const loadingCompleted =
+                await finishSearchLoading(
+                    requestController
+                );
+
+            if (
+                !loadingCompleted ||
+                currentSearchController !==
+                    requestController
+            ) {
+                return;
+            }
+
+            nightwaysData = data;
+        }
+
+
+        renderOriginMarker(
+            originName,
+            originCoordinates
+        );
 
 
         resultsHeading.textContent =
@@ -2204,6 +2399,8 @@ async function loadNightwaysData(reloadData = true) {
         }
 
 
+        stopSearchLoading(requestController);
+
         nightwaysData = null;
         updateDestinationControlsAvailability();
         destinationList.innerHTML = "";
@@ -2242,6 +2439,7 @@ async function loadNightwaysData(reloadData = true) {
             requestController &&
             currentSearchController === requestController
         ) {
+            stopSearchLoading(requestController);
             currentSearchController = null;
 
             if (
