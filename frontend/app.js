@@ -80,6 +80,7 @@ const SEARCH_BUTTON_LABEL =
     searchButton.textContent.trim();
 const SEARCH_LOADING_LIMIT = 90;
 const SEARCH_LOADING_TICK_MS = 180;
+const SEARCH_LOADING_TIME_SCALE_MS = 2500;
 const SEARCH_LOADING_COMPLETION_MS = 320;
 const SEARCH_LOADING_FADE_MS = 240;
 const SEARCH_LOADING_PAINT_TIMEOUT_MS = 100;
@@ -1682,21 +1683,15 @@ function advanceSearchLoading(state) {
         return;
     }
 
-    const remaining =
-        SEARCH_LOADING_LIMIT - state.progress;
-
-    if (remaining <= 0.25) {
-        setSearchLoadingProgress(
-            state,
-            SEARCH_LOADING_LIMIT
-        );
-        state.progressTimerId = null;
-        return;
-    }
+    const elapsedTime = Math.max(
+        0,
+        window.performance.now() - state.startedAt
+    );
 
     setSearchLoadingProgress(
         state,
-        state.progress + Math.max(0.25, remaining * 0.075)
+        SEARCH_LOADING_LIMIT * elapsedTime /
+            (elapsedTime + SEARCH_LOADING_TIME_SCALE_MS)
     );
 
     state.progressTimerId = window.setTimeout(
@@ -1756,6 +1751,7 @@ function startSearchLoading(requestController) {
 
     const state = {
         requestController,
+        startedAt: window.performance.now(),
         progress: 0,
         progressTimerId: null,
         completionTimerId: null,
