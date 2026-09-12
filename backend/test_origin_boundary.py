@@ -1,25 +1,55 @@
+import json
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
-from urllib.error import URLError
+from threading import Barrier, BrokenBarrierError, Lock
+from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlparse
+from urllib.request import Request
 from unittest.mock import call, patch
 
+from backend import boundaries as boundary_module
 from backend.boundaries import (
     NOMINATIM_ACCEPT_LANGUAGE,
     NOMINATIM_BASE_URL,
+    NOMINATIM_REQUEST_INTERVAL_SECONDS,
+    NOMINATIM_RETRY_BACKOFF_SECONDS,
     NOMINATIM_USER_AGENT,
     AmbiguousBoundaryError,
     BoundaryNotFoundError,
     BoundaryServiceError,
     OriginBoundary,
     OriginBoundaryContainment,
+    _load_nominatim_response,
+    _resolve_origin_boundary_cached,
     _request_nominatim_matches,
     resolve_origin_boundary,
 )
 from backend.transitous import ResolvedOrigin
 
 
-class BoundaryResolutionTests(unittest.TestCase):
+class BoundaryTestCase(unittest.TestCase):
+
+    def setUp(self):
+        _resolve_origin_boundary_cached.cache_clear()
+        self.addCleanup(_resolve_origin_boundary_cached.cache_clear)
+        boundary_module._nominatim_last_request_started_at = None
+        boundary_module._nominatim_retry_not_before = None
+        self.addCleanup(
+            setattr,
+            boundary_module,
+            "_nominatim_last_request_started_at",
+            None,
+        )
+        self.addCleanup(
+            setattr,
+            boundary_module,
+            "_nominatim_retry_not_before",
+            None,
+        )
+
+
+class BoundaryResolutionTests(BoundaryTestCase):
 
     @patch("backend.boundaries._request_nominatim_matches")
     def test_berlin_administrative_multipolygon_is_selected(self, request):
@@ -377,8 +407,45 @@ class BoundaryResolutionTests(unittest.TestCase):
         with self.assertRaises(BoundaryNotFoundError):
             resolve_origin_boundary(_origin("Example", "DE"))
 
+    @patch("backend.boundaries._request_nominatim_matches")
+    def test_successful_boundary_resolution_is_cached(self, request):
+        origin = _origin("Cacheville", "DE")
+        request.return_value = [
+            _boundary_match(
+                "Cacheville",
+                "DE",
+                400,
+                _rectangle(10, 50, 12, 52),
+            )
+        ]
 
-class BoundaryRequestTests(unittest.TestCase):
+        first_boundary = resolve_origin_boundary(origin)
+        second_boundary = resolve_origin_boundary(origin)
+
+        self.assertIs(second_boundary, first_boundary)
+        request.assert_called_once_with(origin)
+
+    @patch("backend.boundaries.urlopen")
+    def test_cached_boundary_bypasses_later_rate_limit(self, urlopen):
+        origin = _origin("Cacheville", "DE")
+        matches = [
+            _boundary_match(
+                "Cacheville",
+                "DE",
+                400,
+                _rectangle(10, 50, 12, 52),
+            )
+        ]
+        urlopen.return_value = BytesIO(json.dumps(matches).encode("utf-8"))
+
+        cached_boundary = resolve_origin_boundary(origin)
+        urlopen.side_effect = _rate_limit_error("1")
+
+        self.assertIs(resolve_origin_boundary(origin), cached_boundary)
+        self.assertEqual(urlopen.call_count, 1)
+
+
+class BoundaryRequestTests(BoundaryTestCase):
 
     @patch("backend.boundaries.urlopen")
     def test_request_uses_structured_search_and_stable_exclusion(self, urlopen):
@@ -417,6 +484,191 @@ class BoundaryRequestTests(unittest.TestCase):
             NOMINATIM_ACCEPT_LANGUAGE,
         )
         self.assertEqual(urlopen.call_args.kwargs["timeout"], 60)
+        urlopen.assert_called_once()
+
+    @patch("backend.boundaries.urlopen")
+    def test_sequential_requests_respect_minimum_interval(self, urlopen):
+        clock = _FakeClock()
+        starts, side_effect = _timed_responses(
+            clock,
+            BytesIO(b"[]"),
+            BytesIO(b"[]"),
+        )
+        urlopen.side_effect = side_effect
+
+        with (
+            patch("backend.boundaries.monotonic", clock.monotonic),
+            patch("backend.boundaries.sleep", clock.sleep),
+        ):
+            _request_nominatim_matches(_origin("Berlin", "DE"))
+            _request_nominatim_matches(_origin("Berlin", "DE"))
+
+        self.assertGreaterEqual(
+            starts[1] - starts[0],
+            NOMINATIM_REQUEST_INTERVAL_SECONDS,
+        )
+        self.assertEqual(clock.sleeps, [1.0])
+
+    @patch("backend.boundaries.NOMINATIM_REQUEST_INTERVAL_SECONDS", 0)
+    @patch("backend.boundaries.urlopen")
+    def test_simultaneous_cold_requests_are_serialized(self, urlopen):
+        start = Barrier(2)
+        rendezvous = Barrier(2)
+        state_lock = Lock()
+        active_requests = 0
+        maximum_active_requests = 0
+
+        def response(*args, **kwargs):
+            nonlocal active_requests, maximum_active_requests
+            with state_lock:
+                active_requests += 1
+                maximum_active_requests = max(
+                    maximum_active_requests,
+                    active_requests,
+                )
+
+            try:
+                try:
+                    rendezvous.wait(timeout=0.1)
+                except BrokenBarrierError:
+                    pass
+                return BytesIO(b"[]")
+            finally:
+                with state_lock:
+                    active_requests -= 1
+
+        urlopen.side_effect = response
+        origin = _origin("Berlin", "DE")
+
+        def request_boundary():
+            start.wait()
+            return _request_nominatim_matches(origin)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(
+                executor.map(
+                    lambda _: request_boundary(),
+                    range(2),
+                )
+            )
+
+        self.assertEqual(results, [[], []])
+        self.assertEqual(maximum_active_requests, 1)
+        self.assertEqual(urlopen.call_count, 2)
+
+    @patch("backend.boundaries.urlopen")
+    def test_rate_limit_retries_after_retry_after(self, urlopen):
+        clock = _FakeClock()
+        starts, side_effect = _timed_responses(
+            clock,
+            _rate_limit_error("1.5"),
+            BytesIO(b"[]"),
+        )
+        urlopen.side_effect = side_effect
+
+        with (
+            patch("backend.boundaries.monotonic", clock.monotonic),
+            patch("backend.boundaries.sleep", clock.sleep),
+        ):
+            result = _request_nominatim_matches(
+                _origin("Berlin", "DE")
+            )
+
+        self.assertEqual(result, [])
+        self.assertEqual(starts, [0.0, 1.5])
+        self.assertEqual(clock.sleeps, [1.5])
+
+    @patch("backend.boundaries.urlopen")
+    def test_retry_after_applies_to_other_queued_requests(self, urlopen):
+        clock = _FakeClock()
+        starts, side_effect = _timed_responses(
+            clock,
+            _rate_limit_error("1.5"),
+            BytesIO(b"[]"),
+        )
+        urlopen.side_effect = side_effect
+        request = Request(f"{NOMINATIM_BASE_URL}/search")
+
+        with (
+            patch("backend.boundaries.monotonic", clock.monotonic),
+            patch("backend.boundaries.sleep", clock.sleep),
+        ):
+            with self.assertRaises(HTTPError):
+                _load_nominatim_response(request, None)
+            result = _request_nominatim_matches(
+                _origin("Dresden", "DE")
+            )
+
+        self.assertEqual(result, [])
+        self.assertEqual(starts, [0.0, 1.5])
+        self.assertEqual(clock.sleeps, [1.5])
+
+    @patch("backend.boundaries.urlopen")
+    def test_repeated_rate_limit_is_bounded(self, urlopen):
+        clock = _FakeClock()
+        starts, side_effect = _timed_responses(
+            clock,
+            *[
+                _rate_limit_error()
+                for _ in range(
+                    len(NOMINATIM_RETRY_BACKOFF_SECONDS) + 1
+                )
+            ],
+        )
+        urlopen.side_effect = side_effect
+
+        with (
+            patch("backend.boundaries.monotonic", clock.monotonic),
+            patch("backend.boundaries.sleep", clock.sleep),
+            self.assertRaisesRegex(BoundaryServiceError, "HTTP 429"),
+        ):
+            _request_nominatim_matches(_origin("Berlin", "DE"))
+
+        self.assertEqual(
+            starts,
+            [0.0, 1.0, 2.0],
+        )
+        self.assertEqual(
+            clock.sleeps,
+            [1.0, 1.0],
+        )
+        self.assertEqual(
+            urlopen.call_count,
+            len(NOMINATIM_RETRY_BACKOFF_SECONDS) + 1,
+        )
+
+    @patch("backend.boundaries.sleep")
+    @patch("backend.boundaries.urlopen")
+    def test_long_retry_after_fails_without_waiting(self, urlopen, sleep):
+        urlopen.side_effect = _rate_limit_error("60")
+
+        with self.assertRaisesRegex(BoundaryServiceError, "HTTP 429"):
+            _request_nominatim_matches(_origin("Berlin", "DE"))
+
+        urlopen.assert_called_once()
+        sleep.assert_not_called()
+
+    @patch("backend.boundaries.urlopen")
+    def test_short_retry_waits_for_global_interval(self, urlopen):
+        clock = _FakeClock()
+        starts, side_effect = _timed_responses(
+            clock,
+            _rate_limit_error("0.5"),
+            BytesIO(b"[]"),
+        )
+        urlopen.side_effect = side_effect
+
+        with (
+            patch("backend.boundaries.monotonic", clock.monotonic),
+            patch("backend.boundaries.sleep", clock.sleep),
+        ):
+            result = _request_nominatim_matches(
+                _origin("Berlin", "DE")
+            )
+
+        self.assertEqual(result, [])
+        self.assertEqual(starts, [0.0, 1.0])
+        self.assertEqual(clock.sleeps, [1.0])
 
     @patch("backend.boundaries.urlopen")
     def test_nominatim_failure_has_distinct_error_type(self, urlopen):
@@ -426,7 +678,7 @@ class BoundaryRequestTests(unittest.TestCase):
             _request_nominatim_matches(_origin("Berlin", "DE"))
 
 
-class BoundaryGeometryTests(unittest.TestCase):
+class BoundaryGeometryTests(BoundaryTestCase):
 
     def test_point_inside_and_outside_polygon(self):
         boundary = _resolved_test_boundary(
@@ -478,7 +730,7 @@ class BoundaryGeometryTests(unittest.TestCase):
         self.assertFalse(boundary.contains(51.098293, 13.680163))
 
 
-class OriginBoundaryContainmentTests(unittest.TestCase):
+class OriginBoundaryContainmentTests(BoundaryTestCase):
 
     def test_outside_bounding_box_skips_exact_polygon_scan(self):
         boundary = _resolved_test_boundary(_rectangle(10, 50, 12, 52))
@@ -647,13 +899,58 @@ def _multipolygon(*polygons):
 
 
 def _resolved_test_boundary(geometry):
-    with patch(
-        "backend.boundaries._request_nominatim_matches",
-        return_value=[
-            _boundary_match("Example", "DE", 1, geometry)
-        ],
-    ):
-        return resolve_origin_boundary(_origin("Example", "DE"))
+    _resolve_origin_boundary_cached.cache_clear()
+    try:
+        with patch(
+            "backend.boundaries._request_nominatim_matches",
+            return_value=[
+                _boundary_match("Example", "DE", 1, geometry)
+            ],
+        ):
+            return resolve_origin_boundary(_origin("Example", "DE"))
+    finally:
+        _resolve_origin_boundary_cached.cache_clear()
+
+
+def _rate_limit_error(retry_after=None):
+    headers = {}
+    if retry_after is not None:
+        headers["Retry-After"] = retry_after
+    return HTTPError(
+        f"{NOMINATIM_BASE_URL}/search",
+        429,
+        "Too Many Requests",
+        headers,
+        None,
+    )
+
+
+class _FakeClock:
+
+    def __init__(self):
+        self.now = 0.0
+        self.sleeps = []
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, delay):
+        self.sleeps.append(delay)
+        self.now += delay
+
+
+def _timed_responses(clock, *outcomes):
+    outcomes = iter(outcomes)
+    starts = []
+
+    def respond(*args, **kwargs):
+        starts.append(clock.now)
+        outcome = next(outcomes)
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+    return starts, respond
 
 
 def _exact_contains_spy():

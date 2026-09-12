@@ -8,6 +8,11 @@ exception hierarchy, separate from origin resolution and Transitous failures.
 import json
 import math
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from functools import lru_cache
+from threading import Lock
+from time import monotonic, sleep
 from unicodedata import normalize as unicode_normalize
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -19,6 +24,15 @@ from backend.transitous import ResolvedOrigin
 NOMINATIM_BASE_URL = "https://nominatim.openstreetmap.org"
 NOMINATIM_ACCEPT_LANGUAGE = "en"
 NOMINATIM_USER_AGENT = "Nightways/0.1"
+ORIGIN_BOUNDARY_CACHE_SIZE = 32
+NOMINATIM_RETRY_BACKOFF_SECONDS = (0.5, 1.0)
+NOMINATIM_MAX_RETRY_AFTER_SECONDS = 2.0
+NOMINATIM_REQUEST_INTERVAL_SECONDS = 1.0
+
+
+_nominatim_request_lock = Lock()
+_nominatim_last_request_started_at: float | None = None
+_nominatim_retry_not_before: float | None = None
 
 
 class BoundaryResolutionError(RuntimeError):
@@ -172,6 +186,14 @@ def resolve_origin_boundary(origin: ResolvedOrigin) -> OriginBoundary:
     if not origin.name.strip() or len(country_code) != 2:
         raise ValueError("Resolved origin must have a name and country code.")
 
+    return _resolve_origin_boundary_cached(origin)
+
+
+@lru_cache(maxsize=ORIGIN_BOUNDARY_CACHE_SIZE)
+def _resolve_origin_boundary_cached(
+    origin: ResolvedOrigin,
+) -> OriginBoundary:
+    country_code = origin.country_code.strip().lower()
     matches = _request_nominatim_matches(origin)
     direct_boundary = _select_fallback_boundary(
         matches,
@@ -309,28 +331,139 @@ def _request_nominatim_matches(
         },
     )
 
+    retry_not_before = None
+    for retry_index in range(len(NOMINATIM_RETRY_BACKOFF_SECONDS) + 1):
+        try:
+            matches = _load_nominatim_response(
+                request,
+                retry_not_before,
+            )
+        except HTTPError as error:
+            if (
+                error.code == 429
+                and retry_index < len(NOMINATIM_RETRY_BACKOFF_SECONDS)
+            ):
+                retry_delay = _nominatim_retry_delay(error, retry_index)
+                if retry_delay is not None:
+                    retry_not_before = monotonic() + retry_delay
+                    continue
+
+            raise BoundaryServiceError(
+                f"Nominatim returned HTTP {error.code}. "
+                "Please try again later."
+            ) from error
+        except (URLError, TimeoutError) as error:
+            raise BoundaryServiceError(
+                "Could not reach Nominatim. Please try again later."
+            ) from error
+        except (OSError, json.JSONDecodeError) as error:
+            raise BoundaryServiceError(
+                "Nominatim returned an unreadable response."
+            ) from error
+
+        if not isinstance(matches, list):
+            raise BoundaryServiceError(
+                "Nominatim returned an unreadable response."
+            )
+
+        return matches
+
+    raise AssertionError("Nominatim retry loop ended unexpectedly.")
+
+
+def _load_nominatim_response(
+    request: Request,
+    not_before: float | None,
+):
+    global _nominatim_last_request_started_at
+    global _nominatim_retry_not_before
+
+    with _nominatim_request_lock:
+        while True:
+            now = monotonic()
+            next_start = now if not_before is None else not_before
+            if _nominatim_retry_not_before is not None:
+                next_start = max(
+                    next_start,
+                    _nominatim_retry_not_before,
+                )
+            if _nominatim_last_request_started_at is not None:
+                next_start = max(
+                    next_start,
+                    _nominatim_last_request_started_at
+                    + NOMINATIM_REQUEST_INTERVAL_SECONDS,
+                )
+
+            delay = next_start - now
+            if delay <= 0:
+                break
+            if delay > NOMINATIM_MAX_RETRY_AFTER_SECONDS:
+                raise BoundaryServiceError(
+                    "Nominatim asked Nightways to retry later. "
+                    "Please try again later."
+                )
+            sleep(delay)
+
+        _nominatim_last_request_started_at = monotonic()
+        try:
+            with urlopen(request, timeout=60) as response:
+                return json.load(response)
+        except HTTPError as error:
+            if error.code == 429:
+                retry_after = _nominatim_retry_after(error)
+                if retry_after is not None:
+                    retry_at = monotonic() + retry_after
+                    if _nominatim_retry_not_before is None:
+                        _nominatim_retry_not_before = retry_at
+                    else:
+                        _nominatim_retry_not_before = max(
+                            _nominatim_retry_not_before,
+                            retry_at,
+                        )
+            raise
+
+
+def _nominatim_retry_delay(
+    error: HTTPError,
+    retry_index: int,
+) -> float | None:
+    parsed_retry_after = _nominatim_retry_after(error)
+    if parsed_retry_after is None:
+        return NOMINATIM_RETRY_BACKOFF_SECONDS[retry_index]
+    if parsed_retry_after > NOMINATIM_MAX_RETRY_AFTER_SECONDS:
+        return None
+    return parsed_retry_after
+
+
+def _nominatim_retry_after(error: HTTPError) -> float | None:
+    retry_after = None
+    if error.headers is not None:
+        retry_after = error.headers.get("Retry-After")
+    return _parse_retry_after(retry_after)
+
+
+def _parse_retry_after(value) -> float | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+
+    value = value.strip()
     try:
-        with urlopen(request, timeout=60) as response:
-            matches = json.load(response)
-    except HTTPError as error:
-        raise BoundaryServiceError(
-            f"Nominatim returned HTTP {error.code}. Please try again later."
-        ) from error
-    except (URLError, TimeoutError) as error:
-        raise BoundaryServiceError(
-            "Could not reach Nominatim. Please try again later."
-        ) from error
-    except (OSError, json.JSONDecodeError) as error:
-        raise BoundaryServiceError(
-            "Nominatim returned an unreadable response."
-        ) from error
+        delay = float(value)
+    except ValueError:
+        try:
+            retry_at = parsedate_to_datetime(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
 
-    if not isinstance(matches, list):
-        raise BoundaryServiceError(
-            "Nominatim returned an unreadable response."
-        )
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=timezone.utc)
+        delay = (
+            retry_at - datetime.now(timezone.utc)
+        ).total_seconds()
 
-    return matches
+    if not math.isfinite(delay):
+        return None
+    return max(0.0, delay)
 
 
 def _first_boundary(
