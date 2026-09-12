@@ -138,7 +138,16 @@ input:focus {
 }
 
 .search-status.is-error {
-    color: #9b2f3f;
+    padding: 12px 14px;
+
+    color: #7d2332;
+    background: #fff3f5;
+
+    border: 1px solid rgba(155, 47, 63, 0.24);
+    border-left: 4px solid #9b2f3f;
+    border-radius: 9px;
+
+    font-weight: 600;
 }
 
 button {
@@ -568,6 +577,22 @@ select:disabled {
     margin-bottom: 28px;
 
     color: var(--text-muted);
+}
+
+#destination-count.is-empty {
+    padding: 18px 20px;
+
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.82);
+
+    border: 1px solid rgba(36, 84, 135, 0.16);
+    border-left: 4px solid var(--navy-600);
+    border-radius: 12px;
+
+    line-height: 1.55;
+
+    box-shadow:
+        0 8px 22px rgba(5, 20, 40, 0.06);
 }
 
 #destination-list {

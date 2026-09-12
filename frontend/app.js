@@ -1551,7 +1551,7 @@ function getNightwaysRequestUrl(submittedSearch) {
 
 
 const GENERIC_LOAD_ERROR =
-    "Could not load overnight destinations.";
+    "Could not load overnight destinations. Please try again.";
 
 
 const NETWORK_LOAD_ERROR =
@@ -1559,22 +1559,30 @@ const NETWORK_LOAD_ERROR =
 
 
 const TEMPORARY_SERVICE_ERROR =
-    "Nightways is temporarily unable to search this origin. Please try again.";
+    "Nightways is temporarily unable to complete this search. Please try again.";
 
 
 const EMPTY_RESULTS_MESSAGE =
-    "No direct overnight destinations were found for this date.";
+    "No direct overnight destinations were found for this date. Try another date or a nearby departure city.";
+
+
+const FILTER_EMPTY_RESULTS_MESSAGES = Object.freeze({
+    TRAIN:
+        "No train destinations match this search. Choose All to see every overnight option.",
+    COACH:
+        "No bus destinations match this search. Choose All to see every overnight option."
+});
 
 
 const NIGHTWAYS_ERROR_MESSAGES = Object.freeze({
     origin_not_found:
         "Nightways could not find this city. Check the spelling and try again.",
     origin_ambiguous:
-        "Multiple places match this origin. Add a country or region and try again.",
+        "Multiple places match this origin. Try a more specific place name.",
     invalid_origin:
         "Enter a valid European city and try again.",
     origin_candidate_limit_exceeded:
-        "Nightways cannot safely search this origin yet. Please try another nearby city.",
+        "Nightways found too many possible matches for this origin. Try another nearby city.",
     origin_boundary_not_found:
         "Nightways found this city, but could not determine its search area. Please try another nearby city.",
     origin_boundary_ambiguous:
@@ -1655,6 +1663,40 @@ function clearSearchStatus() {
     searchStatus.classList.remove("is-error");
     searchStatus.setAttribute("role", "status");
     searchStatus.setAttribute("aria-live", "polite");
+}
+
+
+function showDestinationSummary(
+    destinations,
+    visibleDestinations
+) {
+
+    const isEmpty = visibleDestinations.length === 0;
+
+    destinationCount.classList.toggle(
+        "is-empty",
+        isEmpty
+    );
+
+    if (!isEmpty) {
+        destinationCount.textContent =
+            `${visibleDestinations.length} direct overnight destinations`;
+        return;
+    }
+
+    destinationCount.textContent =
+        Array.isArray(destinations) &&
+        destinations.length > 0
+            ? FILTER_EMPTY_RESULTS_MESSAGES[activeMode] ??
+                "No destinations match the current filter. Choose All to see every overnight option."
+            : EMPTY_RESULTS_MESSAGE;
+}
+
+
+function clearDestinationSummary() {
+
+    destinationCount.textContent = "";
+    destinationCount.classList.remove("is-empty");
 }
 
 
@@ -2013,7 +2055,7 @@ async function loadNightwaysData(reloadData = true) {
     }
 
     if (reloadData) {
-        destinationCount.textContent = "";
+        clearDestinationSummary();
     }
 
     clearSelectedDestination();
@@ -2120,11 +2162,12 @@ async function loadNightwaysData(reloadData = true) {
         resultsHeading.textContent =
             `Overnight destinations from ${originName}`;
 
-        destinationCount.textContent =
-            Array.isArray(data.destinations) &&
-            data.destinations.length === 0
-                ? EMPTY_RESULTS_MESSAGE
-                : `${visibleDestinations.length} direct overnight destinations`;
+        if (!reloadData) {
+            showDestinationSummary(
+                data.destinations,
+                visibleDestinations
+            );
+        }
 
 
         const mapBounds =
@@ -2503,6 +2546,11 @@ async function loadNightwaysData(reloadData = true) {
                 return;
             }
 
+            showDestinationSummary(
+                data.destinations,
+                visibleDestinations
+            );
+
             clearSearchStatus();
         }
 
@@ -2545,7 +2593,7 @@ async function loadNightwaysData(reloadData = true) {
             console.error(error);
         }
 
-        destinationCount.textContent = "";
+        clearDestinationSummary();
 
         showSearchStatus(
             error instanceof NightwaysApiError ||

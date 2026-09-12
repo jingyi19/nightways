@@ -271,7 +271,12 @@
                 id="results-content"
                 aria-busy="false"
             >
-                <p id="destination-count"></p>
+                <p
+                    id="destination-count"
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                ></p>
 
                 <div id="destination-list"></div>
             </div>
