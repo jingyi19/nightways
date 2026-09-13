@@ -96,6 +96,77 @@ dateInput.value = [
     String(localDate.getDate()).padStart(2, "0")
 ].join("-");
 
+
+const SEARCH_DATE_PATTERN =
+    /^(\d{4})-(\d{2})-(\d{2})$/;
+
+
+function isValidSearchDate(value) {
+
+    const match = value?.match(
+        SEARCH_DATE_PATTERN
+    );
+
+    if (!match || match[1] === "0000") {
+        return false;
+    }
+
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const parsedDate = new Date(0);
+
+    parsedDate.setUTCHours(0, 0, 0, 0);
+    parsedDate.setUTCFullYear(
+        year,
+        month - 1,
+        day
+    );
+
+    return (
+        parsedDate.getUTCFullYear() === year &&
+        parsedDate.getUTCMonth() === month - 1 &&
+        parsedDate.getUTCDate() === day
+    );
+}
+
+
+function initializeSearchFromUrl() {
+
+    const query = new URLSearchParams(
+        window.location.search
+    );
+    const hasOrigin = query.has("from");
+    const hasDate = query.has("date");
+
+    if (!hasOrigin && !hasDate) {
+        return {
+            shouldSearch: true,
+            replaceUrlOnSuccess: false
+        };
+    }
+
+
+    const requestedOrigin =
+        query.get("from")?.trim() ?? "";
+    const requestedDate = query.get("date");
+
+    originInput.value = requestedOrigin;
+
+    if (isValidSearchDate(requestedDate)) {
+        dateInput.value = requestedDate;
+    }
+
+    return {
+        shouldSearch: Boolean(requestedOrigin),
+        replaceUrlOnSuccess: Boolean(requestedOrigin)
+    };
+}
+
+
+const initialSearchState = initializeSearchFromUrl();
+
 const TRAIN_SERVICE_MODES = new Set([
     "TRAIN",
     "LONG_DISTANCE",
@@ -1550,6 +1621,27 @@ function getNightwaysRequestUrl(submittedSearch) {
 }
 
 
+function replaceSearchUrl(submittedSearch) {
+
+    const url = new URL(window.location.href);
+
+    url.searchParams.set(
+        "from",
+        submittedSearch.origin
+    );
+    url.searchParams.set(
+        "date",
+        submittedSearch.date
+    );
+
+    window.history.replaceState(
+        window.history.state,
+        "",
+        url
+    );
+}
+
+
 const GENERIC_LOAD_ERROR =
     "Could not load overnight destinations. Please try again.";
 
@@ -2021,7 +2113,10 @@ async function getNightwaysApiError(response) {
 }
 
 
-async function loadNightwaysData(reloadData = true) {
+async function loadNightwaysData(
+    reloadData = true,
+    replaceUrlOnSuccess = false
+) {
 
     if (!reloadData && !nightwaysData) {
         return;
@@ -2552,6 +2647,10 @@ async function loadNightwaysData(reloadData = true) {
             );
 
             clearSearchStatus();
+
+            if (replaceUrlOnSuccess) {
+                replaceSearchUrl(submittedSearch);
+            }
         }
 
 
@@ -2661,7 +2760,7 @@ searchForm.addEventListener(
             return;
         }
 
-        loadNightwaysData(true);
+        loadNightwaysData(true, true);
     }
 );
 
@@ -2716,4 +2815,9 @@ sortSelect.addEventListener(
 updateModeFilterButtons();
 updateDestinationControlsAvailability();
 
-loadNightwaysData(true);
+if (initialSearchState.shouldSearch) {
+    loadNightwaysData(
+        true,
+        initialSearchState.replaceUrlOnSuccess
+    );
+}
