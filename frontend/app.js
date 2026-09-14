@@ -70,6 +70,9 @@ const searchLoadingPanel = document.getElementById(
 const searchLoadingTrack = document.getElementById(
     "search-loading-track"
 );
+const searchLoadingFirstSearchMessage = document.getElementById(
+    "search-loading-first-search-message"
+);
 const originInput = document.getElementById("origin");
 const dateInput = document.getElementById("date");
 const sortSelect = document.getElementById("destination-sort");
@@ -84,6 +87,7 @@ const SEARCH_LOADING_TIME_SCALE_MS = 2500;
 const SEARCH_LOADING_COMPLETION_MS = 320;
 const SEARCH_LOADING_FADE_MS = 240;
 const SEARCH_LOADING_PAINT_TIMEOUT_MS = 100;
+const FIRST_SEARCH_MESSAGE_DELAY_MS = 8000;
 const reducedMotionQuery = window.matchMedia(
     "(prefers-reduced-motion: reduce)"
 );
@@ -206,6 +210,7 @@ let activeSort =
 let nightwaysData = null;
 let currentSearchController = null;
 let currentSearchLoading = null;
+let hasReceivedBackendResponse = false;
 let selectedDestinationView = null;
 
 
@@ -1835,6 +1840,31 @@ function advanceSearchLoading(state) {
 }
 
 
+function hideSearchLoadingFirstSearchMessage(state) {
+
+    if (state.firstSearchMessageTimerId !== null) {
+        window.clearTimeout(
+            state.firstSearchMessageTimerId
+        );
+        state.firstSearchMessageTimerId = null;
+    }
+
+    searchLoadingFirstSearchMessage.hidden = true;
+}
+
+
+function recordBackendResponse() {
+
+    hasReceivedBackendResponse = true;
+
+    if (currentSearchLoading) {
+        hideSearchLoadingFirstSearchMessage(
+            currentSearchLoading
+        );
+    }
+}
+
+
 function closeSearchLoading(state, completed) {
 
     if (currentSearchLoading !== state) {
@@ -1852,6 +1882,8 @@ function closeSearchLoading(state, completed) {
     if (state.fadeTimerId !== null) {
         window.clearTimeout(state.fadeTimerId);
     }
+
+    hideSearchLoadingFirstSearchMessage(state);
 
     const resolveCompletion = state.resolveCompletion;
     const resolveFade = state.resolveFade;
@@ -1890,6 +1922,7 @@ function startSearchLoading(requestController) {
         progressTimerId: null,
         completionTimerId: null,
         fadeTimerId: null,
+        firstSearchMessageTimerId: null,
         resolveCompletion: null,
         resolveFade: null,
         completionPromise: null,
@@ -1904,6 +1937,26 @@ function startSearchLoading(requestController) {
     searchLoadingPanel.classList.remove("is-fading");
     searchLoadingPanel.hidden = false;
     setSearchLoadingProgress(state, 0);
+
+    searchLoadingFirstSearchMessage.hidden = true;
+
+    if (!hasReceivedBackendResponse) {
+        state.firstSearchMessageTimerId = window.setTimeout(
+            () => {
+                state.firstSearchMessageTimerId = null;
+
+                if (
+                    currentSearchLoading !== state ||
+                    hasReceivedBackendResponse
+                ) {
+                    return;
+                }
+
+                searchLoadingFirstSearchMessage.hidden = false;
+            },
+            FIRST_SEARCH_MESSAGE_DELAY_MS
+        );
+    }
 
     if (reducedMotionQuery.matches) {
         setSearchLoadingProgress(
@@ -2182,6 +2235,8 @@ async function loadNightwaysData(
                         signal: requestController.signal
                     }
                 );
+
+                recordBackendResponse();
             } catch (error) {
                 if (error?.name === "AbortError") {
                     throw error;
