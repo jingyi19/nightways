@@ -1,0 +1,14 @@
+OS OPEN BUILT UP AREAS 2026-04
+
+This derived dataset contains OS OpenData licensed under the Open Government
+Licence version 3.0:
+
+https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/
+
+Ordnance Survey licence information:
+
+https://www.ordnancesurvey.co.uk/licensing-agreements/open-government-licence
+
+Required attribution:
+
+Contains Ordnance Survey data © Crown copyright and database right 2026.
