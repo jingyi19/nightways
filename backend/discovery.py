@@ -20,7 +20,8 @@ from backend.boundaries import (
     OriginBoundaryContainment,
     resolve_origin_boundary,
 )
-from backend.localities import GiscoLauIndex, build_locality_response
+from backend.gb_localities import CompositeLocalityIndex
+from backend.localities import LocalityIndex, build_locality_response
 from backend.origin_metadata import CoordinateOriginMetadataEnricher
 from backend.transitous import (
     DEPARTURE_START,
@@ -145,18 +146,17 @@ def get_nightways_for_origin(
 def get_nightways_for_origin_by_locality(
     city_name: str,
     travel_date: date,
-    locality_index: GiscoLauIndex | None = None,
+    locality_index: LocalityIndex | None = None,
     candidate_stop_limit: int = MAX_CANDIDATE_STOPS,
 ) -> dict:
-    """Build the internal GISCO-grouped response for an arbitrary origin.
+    """Build the internal locality-grouped response for an arbitrary origin.
 
-    A caller can reuse an already-open index. Otherwise the local GeoPackage is
-    opened from NIGHTWAYS_GISCO_LAU_PATH for this operation. This function is
-    intentionally not wired to the public Dresden API.
+    A caller can reuse an already-open index. Otherwise a GISCO-first composite
+    index is opened for this operation.
     """
 
     if locality_index is None:
-        with GiscoLauIndex.from_environment() as configured_index:
+        with CompositeLocalityIndex.from_environment() as configured_index:
             return get_nightways_for_origin_by_locality(
                 city_name,
                 travel_date,

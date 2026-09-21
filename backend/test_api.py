@@ -50,6 +50,29 @@ class NightwaysApiTests(unittest.TestCase):
         )
 
     @patch("backend.main.get_nightways_for_origin_by_locality")
+    def test_gb_country_name_serializes_as_united_kingdom(self, pipeline):
+        response = _response("Berlin", destination_count=1)
+        response["destinations"][0].update(
+            {
+                "gisco_id": "GB_LONDON",
+                "country_code": "GB",
+                "lau_name": "London",
+                "dataset_year": 2026,
+                "city": "London",
+            }
+        )
+        pipeline.return_value = response
+
+        result = get_nightways("Berlin", "2026-08-14")
+
+        destination = result["destinations"][0]
+        self.assertEqual(destination["country"], "United Kingdom")
+        self.assertEqual(destination["country_code"], "GB")
+        self.assertEqual(destination["gisco_id"], "GB_LONDON")
+        self.assertEqual(destination["lau_name"], "London")
+        self.assertEqual(destination["dataset_year"], 2026)
+
+    @patch("backend.main.get_nightways_for_origin_by_locality")
     def test_missing_country_name_is_a_gisco_configuration_error(self, pipeline):
         pipeline.return_value = _response("Berlin", destination_count=1)
 

@@ -120,6 +120,7 @@ GISCO_COUNTRY_NAMES = {
     "ES": "Spain",
     "FI": "Finland",
     "FR": "France",
+    "GB": "United Kingdom",
     "HR": "Croatia",
     "HU": "Hungary",
     "IE": "Ireland",

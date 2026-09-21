@@ -482,7 +482,7 @@ class DenseOriginOverlapTests(unittest.TestCase):
 class InternalOriginFlowTests(unittest.TestCase):
 
     @patch("backend.discovery.resolve_origin")
-    @patch("backend.discovery.GiscoLauIndex.from_environment")
+    @patch("backend.discovery.CompositeLocalityIndex.from_environment")
     def test_missing_locality_dataset_fails_before_network_discovery(
         self,
         from_environment,

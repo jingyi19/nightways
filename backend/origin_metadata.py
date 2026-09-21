@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from timezonefinder import TimezoneFinder
 
 from backend.localities import (
-    GiscoLauIndex,
+    LocalityIndex,
     LocalityResolutionStatus,
 )
 from backend.transitous import (
@@ -26,7 +26,7 @@ class CoordinateOriginMetadataEnricher:
 
     def __init__(
         self,
-        locality_index: GiscoLauIndex,
+        locality_index: LocalityIndex,
         timezone_finder_factory=TimezoneFinder,
     ):
         self.locality_index = locality_index

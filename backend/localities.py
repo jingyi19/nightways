@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import date
 from enum import Enum
 from pathlib import Path
+from typing import Protocol
 
 from backend.boundaries import BoundaryGeometry
 
@@ -89,6 +90,20 @@ class LocalityResolution:
     @property
     def resolved(self) -> bool:
         return self.status is LocalityResolutionStatus.RESOLVED
+
+
+class LocalityIndex(Protocol):
+    """Provider contract used by locality grouping and origin enrichment."""
+
+    def resolve(
+        self,
+        lat: float,
+        lon: float,
+        country_code: str | None = None,
+    ) -> LocalityResolution:
+        """Resolve one coordinate without changing the response contract."""
+
+        ...
 
 
 class GiscoLauIndex:
@@ -395,7 +410,7 @@ def build_locality_response(
     origin_name: str,
     travel_date: date,
     qualified_trips,
-    locality_index: GiscoLauIndex,
+    locality_index: LocalityIndex,
 ) -> dict:
     """Group already-qualified arrival events by GISCO_ID."""
 
