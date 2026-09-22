@@ -1,5 +1,6 @@
 import json
 import unittest
+from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from threading import Barrier, BrokenBarrierError, Lock
@@ -123,6 +124,7 @@ class BoundaryResolutionTests(BoundaryTestCase):
 
     @patch("backend.boundaries._request_nominatim_matches")
     def test_london_selects_greater_london_in_result_order(self, request):
+        origin = _origin("London", "GB")
         request.return_value = [
             _boundary_match(
                 "Greater London",
@@ -140,10 +142,11 @@ class BoundaryResolutionTests(BoundaryTestCase):
             ),
         ]
 
-        boundary = resolve_origin_boundary(_origin("London", "GB"))
+        boundary = resolve_origin_boundary(origin)
 
         self.assertEqual(boundary.osm_id, 175342)
         self.assertEqual(boundary.display_name, "Greater London")
+        request.assert_called_once_with(origin)
 
     @patch("backend.boundaries._request_nominatim_matches")
     def test_initial_oslo_results_use_unique_municipality(self, request):
@@ -349,6 +352,328 @@ class BoundaryResolutionTests(BoundaryTestCase):
         )
 
     @patch("backend.boundaries._request_nominatim_matches")
+    def test_glasgow_uses_linked_level_6_county_boundary(self, request):
+        origin = _origin(
+            "Glasgow",
+            "GB",
+            lat=55.861155,
+            lon=-4.250168,
+        )
+        city_point = _gb_city_point(
+            "Glasgow",
+            11127374,
+            "Glasgow City",
+            "GB-GLG",
+        )
+        port_glasgow = _city_point("Port Glasgow", "GB", 27039157)
+        port_glasgow["type"] = "town"
+        port_glasgow["addresstype"] = "town"
+        county = _gb_county_match(
+            "Glasgow City",
+            1906767,
+            _rectangle(-4.3932006, 55.7812791, -4.0717169, 55.9296388),
+            "GB-GLG",
+        )
+        request.side_effect = [[city_point], [port_glasgow], [county]]
+
+        boundary = resolve_origin_boundary(origin)
+
+        self.assertEqual(boundary.osm_type, "relation")
+        self.assertEqual(boundary.osm_id, 1906767)
+        self.assertEqual(boundary.display_name, "Glasgow City")
+        self.assertEqual(boundary.country_code, "GB")
+        self.assertEqual(boundary.geometry.geojson_type, "Polygon")
+        self.assertTrue(boundary.contains(origin.lat, origin.lon))
+        self.assertEqual(
+            request.call_args_list,
+            [
+                call(origin),
+                call(origin, excluded_osm_reference="N11127374"),
+                call(origin, county_name="Glasgow City"),
+            ],
+        )
+
+    @patch("backend.boundaries._request_nominatim_matches")
+    def test_cardiff_uses_linked_level_6_county_boundary(self, request):
+        origin = _origin(
+            "Cardiff",
+            "GB",
+            lat=51.481654,
+            lon=-3.179193,
+        )
+        city_point = _gb_city_point(
+            "Cardiff",
+            738885245,
+            "Cardiff",
+            "GB-CRF",
+        )
+        county = _gb_county_match(
+            "Cardiff",
+            1625787,
+            _multipolygon(
+                _rectangle(-3.3437661, 51.3745559, -3.15, 51.5605040),
+                _rectangle(-3.15, 51.3745559, -3.0688774, 51.5605040),
+            ),
+            "GB-CRF",
+        )
+        request.side_effect = [[city_point], [], [county]]
+
+        boundary = resolve_origin_boundary(origin)
+
+        self.assertEqual(boundary.osm_type, "relation")
+        self.assertEqual(boundary.osm_id, 1625787)
+        self.assertEqual(boundary.display_name, "Cardiff")
+        self.assertEqual(boundary.country_code, "GB")
+        self.assertEqual(boundary.geometry.geojson_type, "MultiPolygon")
+        self.assertTrue(boundary.contains(origin.lat, origin.lon))
+        self.assertEqual(
+            request.call_args_list,
+            [
+                call(origin),
+                call(origin, excluded_osm_reference="N738885245"),
+                call(origin, county_name="Cardiff"),
+            ],
+        )
+
+    @patch("backend.boundaries._request_nominatim_matches")
+    def test_gb_municipality_retains_precedence_over_county(self, request):
+        origin = _origin("Example", "GB", lat=51, lon=-3)
+        city_point = _gb_city_point(
+            "Example",
+            100,
+            "Example City",
+            "GB-EXA",
+        )
+        municipality = _boundary_match(
+            "Example Municipality",
+            "GB",
+            150,
+            _rectangle(-4, 50, -2, 52),
+            address_type="municipality",
+        )
+        request.side_effect = [[city_point], [municipality]]
+
+        boundary = resolve_origin_boundary(origin)
+
+        self.assertEqual(boundary.osm_id, 150)
+        self.assertEqual(
+            request.call_args_list,
+            [
+                call(origin),
+                call(origin, excluded_osm_reference="N100"),
+            ],
+        )
+
+    @patch("backend.boundaries._request_nominatim_matches")
+    def test_gb_county_fallback_rejects_broad_county_name(self, request):
+        origin = _origin("Oxford", "GB", lat=51.752, lon=-1.2577)
+        city_point = _gb_city_point(
+            "Oxford",
+            100,
+            "Oxfordshire",
+            "GB-OXF",
+        )
+        request.side_effect = [[city_point], []]
+
+        with self.assertRaises(BoundaryNotFoundError):
+            resolve_origin_boundary(origin)
+
+        self.assertEqual(
+            request.call_args_list,
+            [
+                call(origin),
+                call(origin, excluded_osm_reference="N100"),
+            ],
+        )
+
+    @patch("backend.boundaries._request_nominatim_matches")
+    def test_gb_county_fallback_requires_complete_level_6_identity(
+        self,
+        request,
+    ):
+        origin = _origin("Example", "GB", lat=51, lon=-3)
+        base_point = _gb_city_point(
+            "Example",
+            100,
+            "Example City",
+            "GB-EXA",
+        )
+
+        def missing_county(match):
+            del match["address"]["county"]
+
+        def missing_level_6_code(match):
+            del match["address"]["ISO3166-2-lvl6"]
+
+        def wrong_level_6_prefix(match):
+            match["address"]["ISO3166-2-lvl6"] = "FR-EXA"
+
+        invalid_cases = {
+            "missing county": missing_county,
+            "missing level-6 code": missing_level_6_code,
+            "wrong level-6 prefix": wrong_level_6_prefix,
+        }
+
+        for label, invalidate in invalid_cases.items():
+            with self.subTest(case=label):
+                _resolve_origin_boundary_cached.cache_clear()
+                request.reset_mock()
+                city_point = deepcopy(base_point)
+                invalidate(city_point)
+                request.side_effect = [[city_point], []]
+
+                with self.assertRaises(BoundaryNotFoundError):
+                    resolve_origin_boundary(origin)
+
+                self.assertEqual(
+                    request.call_args_list,
+                    [
+                        call(origin),
+                        call(origin, excluded_osm_reference="N100"),
+                    ],
+                )
+
+    @patch("backend.boundaries._request_nominatim_matches")
+    def test_gb_county_fallback_rejects_invalid_relations(self, request):
+        origin = _origin("Example", "GB", lat=51, lon=-3)
+        city_point = _gb_city_point(
+            "Example",
+            100,
+            "Example City",
+            "GB-EXA",
+        )
+
+        def wrong_country(match):
+            match["address"]["country_code"] = "fr"
+
+        def wrong_category(match):
+            match["category"] = "place"
+
+        def wrong_type(match):
+            match["type"] = "county"
+
+        def wrong_address_type(match):
+            match["addresstype"] = "municipality"
+
+        def wrong_osm_type(match):
+            match["osm_type"] = "way"
+
+        def wrong_admin_level(match):
+            match["extratags"]["admin_level"] = "7"
+
+        def wrong_iso_code(match):
+            match["address"]["ISO3166-2-lvl6"] = "GB-OTHER"
+
+        def wrong_county_name(match):
+            match["name"] = "Other City"
+
+        def wrong_address_county_name(match):
+            match["address"]["county"] = "Other City"
+
+        def point_geometry(match):
+            match["geojson"] = {
+                "type": "Point",
+                "coordinates": [-3, 51],
+            }
+
+        def outside_origin(match):
+            match["geojson"] = _rectangle(10, 50, 12, 52)
+
+        invalid_cases = {
+            "wrong country": wrong_country,
+            "wrong category": wrong_category,
+            "wrong type": wrong_type,
+            "wrong address type": wrong_address_type,
+            "wrong OSM type": wrong_osm_type,
+            "wrong admin level": wrong_admin_level,
+            "wrong ISO code": wrong_iso_code,
+            "wrong county name": wrong_county_name,
+            "wrong address county name": wrong_address_county_name,
+            "non-polygon geometry": point_geometry,
+            "origin outside geometry": outside_origin,
+        }
+
+        for label, invalidate in invalid_cases.items():
+            with self.subTest(case=label):
+                _resolve_origin_boundary_cached.cache_clear()
+                request.reset_mock()
+                county = _gb_county_match(
+                    "Example City",
+                    200,
+                    _rectangle(-4, 50, -2, 52),
+                    "GB-EXA",
+                )
+                invalidate(county)
+                request.side_effect = [[city_point], [], [county]]
+
+                with self.assertRaises(BoundaryNotFoundError):
+                    resolve_origin_boundary(origin)
+
+                self.assertEqual(request.call_count, 3)
+
+    @patch("backend.boundaries._request_nominatim_matches")
+    def test_only_fully_qualifying_gb_county_is_selected(self, request):
+        origin = _origin("Example", "GB", lat=51, lon=-3)
+        city_point = _gb_city_point(
+            "Example",
+            100,
+            "Example City",
+            "GB-EXA",
+        )
+        wrong_code = _gb_county_match(
+            "Example City",
+            201,
+            _rectangle(-4, 50, -2, 52),
+            "GB-OTHER",
+        )
+        valid = _gb_county_match(
+            "Example City",
+            202,
+            _rectangle(-4, 50, -2, 52),
+            "GB-EXA",
+        )
+        request.side_effect = [[city_point], [], [wrong_code, valid]]
+
+        boundary = resolve_origin_boundary(origin)
+
+        self.assertEqual(boundary.osm_id, 202)
+
+    @patch("backend.boundaries._request_nominatim_matches")
+    def test_multiple_linked_gb_counties_are_ambiguous(self, request):
+        origin = _origin("Example", "GB", lat=51, lon=-3)
+        city_point = _gb_city_point(
+            "Example",
+            100,
+            "Example City",
+            "GB-EXA",
+        )
+        first = _gb_county_match(
+            "Example City",
+            201,
+            _rectangle(-4, 50, -2, 52),
+            "GB-EXA",
+        )
+        second = deepcopy(first)
+        second["osm_id"] = 202
+        request.side_effect = [[city_point], [], [first, second]]
+
+        with self.assertRaises(AmbiguousBoundaryError) as error:
+            resolve_origin_boundary(origin)
+
+        self.assertEqual(
+            [candidate.osm_id for candidate in error.exception.candidates],
+            [201, 202],
+        )
+        self.assertEqual(
+            request.call_args_list,
+            [
+                call(origin),
+                call(origin, excluded_osm_reference="N100"),
+                call(origin, county_name="Example City"),
+            ],
+        )
+
+    @patch("backend.boundaries._request_nominatim_matches")
     def test_multiple_fallback_municipalities_are_ambiguous(self, request):
         origin = _origin("Example", "DE")
         request.side_effect = [
@@ -482,6 +807,38 @@ class BoundaryRequestTests(BoundaryTestCase):
         self.assertEqual(
             request.get_header("Accept-language"),
             NOMINATIM_ACCEPT_LANGUAGE,
+        )
+        self.assertEqual(urlopen.call_args.kwargs["timeout"], 60)
+        urlopen.assert_called_once()
+
+    @patch("backend.boundaries.urlopen")
+    def test_county_request_uses_structured_country_search(self, urlopen):
+        urlopen.return_value = BytesIO(b"[]")
+        origin = _origin("Glasgow", "GB")
+
+        result = _request_nominatim_matches(
+            origin,
+            county_name="Glasgow City",
+        )
+
+        self.assertEqual(result, [])
+        request = urlopen.call_args.args[0]
+        parameters = parse_qs(urlparse(request.full_url).query)
+        self.assertEqual(parameters["county"], ["Glasgow City"])
+        self.assertEqual(parameters["countrycodes"], ["gb"])
+        self.assertNotIn("city", parameters)
+        self.assertNotIn("featureType", parameters)
+        self.assertNotIn("exclude_place_ids", parameters)
+        self.assertEqual(parameters["addressdetails"], ["1"])
+        self.assertEqual(parameters["extratags"], ["1"])
+        self.assertEqual(parameters["namedetails"], ["1"])
+        self.assertEqual(parameters["polygon_geojson"], ["1"])
+        self.assertEqual(parameters["accept-language"], ["en"])
+        self.assertEqual(parameters["dedupe"], ["0"])
+        self.assertEqual(parameters["limit"], ["10"])
+        self.assertEqual(
+            request.get_header("User-agent"),
+            NOMINATIM_USER_AGENT,
         )
         self.assertEqual(urlopen.call_args.kwargs["timeout"], 60)
         urlopen.assert_called_once()
@@ -823,13 +1180,18 @@ class OriginBoundaryContainmentTests(BoundaryTestCase):
         self.assertFalse(multipolygon_containment.contains(25, 5))
 
 
-def _origin(name: str, country_code: str) -> ResolvedOrigin:
+def _origin(
+    name: str,
+    country_code: str,
+    lat: float = 0,
+    lon: float = 0,
+) -> ResolvedOrigin:
     return ResolvedOrigin(
         name=name,
         country=country_code,
         country_code=country_code,
-        lat=0,
-        lon=0,
+        lat=lat,
+        lon=lon,
         timezone="Europe/Berlin",
     )
 
@@ -872,6 +1234,41 @@ def _city_point(name, country_code, osm_id):
         "address": {"country_code": country_code.lower()},
         "geojson": {"type": "Point", "coordinates": [12, 55]},
     }
+
+
+def _gb_city_point(name, osm_id, county_name, level_6_code):
+    match = _city_point(name, "GB", osm_id)
+    match["address"].update(
+        {
+            "city": name,
+            "county": county_name,
+            "ISO3166-2-lvl6": level_6_code,
+        }
+    )
+    return match
+
+
+def _gb_county_match(
+    name,
+    osm_id,
+    geometry,
+    level_6_code,
+):
+    match = _boundary_match(
+        name,
+        "GB",
+        osm_id,
+        geometry,
+        address_type="county",
+    )
+    match["address"].update(
+        {
+            "county": name,
+            "ISO3166-2-lvl6": level_6_code,
+        }
+    )
+    match["extratags"]["admin_level"] = "6"
+    return match
 
 
 def _rectangle(west, south, east, north):

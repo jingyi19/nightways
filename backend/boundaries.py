@@ -28,6 +28,8 @@ ORIGIN_BOUNDARY_CACHE_SIZE = 32
 NOMINATIM_RETRY_BACKOFF_SECONDS = (0.5, 1.0)
 NOMINATIM_MAX_RETRY_AFTER_SECONDS = 2.0
 NOMINATIM_REQUEST_INTERVAL_SECONDS = 1.0
+GB_COUNTRY_CODE = "gb"
+ISO_LEVEL_6_ADDRESS_KEY = "ISO3166-2-lvl6"
 
 
 _nominatim_request_lock = Lock()
@@ -240,6 +242,23 @@ def _resolve_origin_boundary_cached(
         if local_boundary is not None:
             return local_boundary
 
+    county_identity = _gb_county_identity(matches[0], origin, country_code)
+    if county_identity is not None:
+        county_name, level_6_code = county_identity
+        county_matches = _request_nominatim_matches(
+            origin,
+            county_name=county_name,
+        )
+        county_boundary = _select_gb_county_boundary(
+            county_matches,
+            origin,
+            country_code,
+            county_name,
+            level_6_code,
+        )
+        if county_boundary is not None:
+            return county_boundary
+
     raise BoundaryNotFoundError(
         f"No city boundary found for {origin.name!r}."
     )
@@ -297,6 +316,97 @@ def _local_city_name(match: dict, canonical_name: str) -> str | None:
     return local_name
 
 
+def _gb_county_identity(
+    match: dict,
+    origin: ResolvedOrigin,
+    country_code: str,
+) -> tuple[str, str] | None:
+    """Return a city-linked GB level-6 authority from a leading Point."""
+
+    if (
+        country_code != GB_COUNTRY_CODE
+        or not _is_leading_city_point(match, country_code)
+    ):
+        return None
+
+    address = match.get("address") or {}
+    city_name = address.get("city")
+    county_name = address.get("county")
+    level_6_code = address.get(ISO_LEVEL_6_ADDRESS_KEY)
+    if not all(
+        isinstance(value, str) and value.strip()
+        for value in (city_name, county_name, level_6_code)
+    ):
+        return None
+
+    city_name = city_name.strip()
+    county_name = county_name.strip()
+    level_6_code = level_6_code.strip()
+    city_tokens = _normalized_boundary_name(city_name).split()
+    county_tokens = _normalized_boundary_name(county_name).split()
+    if (
+        _normalized_boundary_name(origin.name)
+        != _normalized_boundary_name(city_name)
+        or county_tokens not in (city_tokens, [*city_tokens, "city"])
+        or not level_6_code.startswith("GB-")
+    ):
+        return None
+
+    return county_name, level_6_code
+
+
+def _select_gb_county_boundary(
+    matches: list[dict],
+    origin: ResolvedOrigin,
+    country_code: str,
+    county_name: str,
+    level_6_code: str,
+) -> OriginBoundary | None:
+    """Select one strictly linked, enclosing GB level-6 county relation."""
+
+    expected_county = _normalized_boundary_name(county_name)
+    candidates = []
+    for match in matches:
+        if not isinstance(match, dict):
+            continue
+
+        address = match.get("address") or {}
+        extra_tags = match.get("extratags") or {}
+        match_name = match.get("name")
+        match_county = address.get("county")
+        if (
+            country_code != GB_COUNTRY_CODE
+            or not isinstance(match_name, str)
+            or _normalized_boundary_name(match_name) != expected_county
+            or not isinstance(match_county, str)
+            or _normalized_boundary_name(match_county) != expected_county
+            or address.get(ISO_LEVEL_6_ADDRESS_KEY) != level_6_code
+            or match.get("osm_type") != "relation"
+            or extra_tags.get("admin_level") != "6"
+        ):
+            continue
+
+        boundary = _boundary_from_match(
+            match,
+            country_code,
+            address_type="county",
+        )
+        if boundary is None:
+            continue
+        try:
+            contains_origin = boundary.contains(origin.lat, origin.lon)
+        except (TypeError, ValueError):
+            contains_origin = False
+        if contains_origin:
+            candidates.append(boundary)
+
+    if len(candidates) == 1:
+        return candidates[0]
+    if len(candidates) > 1:
+        raise AmbiguousBoundaryError(origin, candidates)
+    return None
+
+
 def _normalized_boundary_name(name: str) -> str:
     normalized = unicode_normalize("NFKC", name)
     return " ".join(normalized.split()).casefold()
@@ -305,11 +415,16 @@ def _normalized_boundary_name(name: str) -> str:
 def _request_nominatim_matches(
     origin: ResolvedOrigin,
     excluded_osm_reference: str | None = None,
+    *,
+    county_name: str | None = None,
 ) -> list[dict]:
+    if county_name is not None and excluded_osm_reference is not None:
+        raise ValueError(
+            "A county search cannot exclude a city OSM reference."
+        )
+
     parameters = {
-        "city": origin.name,
         "countrycodes": origin.country_code.lower(),
-        "featureType": "city",
         "format": "jsonv2",
         "addressdetails": 1,
         "extratags": 1,
@@ -319,6 +434,12 @@ def _request_nominatim_matches(
         "dedupe": 0,
         "limit": 10,
     }
+    if county_name is None:
+        parameters["city"] = origin.name
+        parameters["featureType"] = "city"
+    else:
+        parameters["county"] = county_name
+
     if excluded_osm_reference is not None:
         parameters["exclude_place_ids"] = excluded_osm_reference
 
