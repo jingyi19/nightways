@@ -48,7 +48,11 @@ MAX_CANDIDATE_STOPS = 25
 DEPARTURE_WINDOW_SECONDS = 6 * 60 * 60 - 1
 MAX_BATCH_CANDIDATES = 5
 MAX_BATCH_RADIUS_METRES = 1500
+MAX_FALLBACK_BATCH_RADIUS_METRES = 2000
 BATCH_RADIUS_PADDING_METRES = 25
+MAX_FALLBACK_MEMBER_RADIUS_METRES = (
+    MAX_FALLBACK_BATCH_RADIUS_METRES - BATCH_RADIUS_PADDING_METRES
+)
 BATCH_ASSOCIATION_RADIUS_METRES = 250
 MAX_DENSE_RESPONSE_BYTES = 10 * 1024 * 1024
 MAX_DENSE_AGGREGATE_BYTES = 50 * 1024 * 1024
@@ -107,8 +111,14 @@ class CandidateStop:
 
 
 @dataclass(frozen=True, slots=True)
+class CandidateBatchCenter:
+    lat: float
+    lon: float
+
+
+@dataclass(frozen=True, slots=True)
 class CandidateBatch:
-    center: CandidateStop
+    center: CandidateStop | CandidateBatchCenter
     members: tuple[CandidateStop, ...]
     radius_metres: int
 
@@ -310,13 +320,37 @@ def _plan_candidate_batches(
             "Dense-origin candidate batch plan contains duplicate stop IDs."
         )
 
-    minimum_batches = math.ceil(len(candidates) / MAX_BATCH_CANDIDATES)
-    if minimum_batches > request_limit:
+    admission_request_count = math.ceil(
+        len(candidates) / MAX_BATCH_CANDIDATES
+    )
+    if len(candidates) > request_limit * MAX_BATCH_CANDIDATES:
         raise CandidateStopLimitError(
             len(candidates),
             request_limit,
-            minimum_batches,
+            admission_request_count,
         )
+
+    legacy_batches = _plan_legacy_candidate_batches(candidates)
+    _validate_candidate_batches(candidates, legacy_batches)
+    if len(legacy_batches) <= request_limit:
+        return legacy_batches
+
+    fallback_batches = _plan_fallback_candidate_batches(candidates)
+    _validate_candidate_batches(candidates, fallback_batches)
+    if len(fallback_batches) > request_limit:
+        raise CandidateStopLimitError(
+            len(candidates),
+            request_limit,
+            len(fallback_batches),
+        )
+
+    return fallback_batches
+
+
+def _plan_legacy_candidate_batches(
+    candidates: tuple[CandidateStop, ...],
+) -> tuple[CandidateBatch, ...]:
+    """Preserve the original bounded planner for already-supported cities."""
 
     remaining = {
         candidate.stop_id: candidate
@@ -373,17 +407,283 @@ def _plan_candidate_batches(
         for member in batch.members:
             del remaining[member.stop_id]
 
-    planned_batches = tuple(batches)
-    _validate_candidate_batches(candidates, planned_batches)
+    return tuple(batches)
 
-    if len(planned_batches) > request_limit:
-        raise CandidateStopLimitError(
-            len(candidates),
-            request_limit,
-            len(planned_batches),
+
+def _plan_fallback_candidate_batches(
+    candidates: tuple[CandidateStop, ...],
+) -> tuple[CandidateBatch, ...]:
+    """Cover a failed dense plan with deterministic, bounded spatial disks."""
+
+    ordered_candidates = tuple(
+        sorted(candidates, key=lambda candidate: candidate.stop_id)
+    )
+    if not ordered_candidates:
+        return ()
+
+    effective_radius = MAX_FALLBACK_MEMBER_RADIUS_METRES
+    projection = _candidate_projection(ordered_candidates)
+    projected_candidates = tuple(
+        (
+            candidate,
+            *_project_candidate(candidate, projection),
         )
+        for candidate in ordered_candidates
+    )
 
-    return planned_batches
+    proposed_centers = [
+        (x, y)
+        for _, x, y in projected_candidates
+    ]
+    for first_index, (_, first_x, first_y) in enumerate(
+        projected_candidates
+    ):
+        for _, second_x, second_y in projected_candidates[
+            first_index + 1 :
+        ]:
+            proposed_centers.extend(
+                _pair_circle_centers(
+                    first_x,
+                    first_y,
+                    second_x,
+                    second_y,
+                    effective_radius,
+                )
+            )
+
+    options_by_members = {}
+    for x, y in proposed_centers:
+        center = _unproject_batch_center(x, y, projection)
+        if not _valid_coordinate(center.lat, center.lon):
+            continue
+        members = tuple(
+            index
+            for index, candidate in enumerate(ordered_candidates)
+            if _coordinate_distance_metres(
+                center.lat,
+                center.lon,
+                candidate.lat,
+                candidate.lon,
+            )
+            <= effective_radius
+        )
+        if not members:
+            continue
+
+        member_mask = sum(1 << index for index in members)
+        center_key = (
+            round(x, 6),
+            round(y, 6),
+            x,
+            y,
+        )
+        previous = options_by_members.get(member_mask)
+        if previous is None or center_key < previous[0]:
+            options_by_members[member_mask] = (center_key, center)
+
+    options = _remove_dominated_batch_options(options_by_members)
+    remaining_mask = (1 << len(ordered_candidates)) - 1
+    batches = []
+
+    while remaining_mask:
+        choices = []
+        for member_mask, center_key, center in options:
+            uncovered_mask = member_mask & remaining_mask
+            uncovered_count = uncovered_mask.bit_count()
+            if uncovered_count:
+                choices.append(
+                    (
+                        -uncovered_count,
+                        center_key,
+                        member_mask,
+                        center,
+                        uncovered_mask,
+                    )
+                )
+
+        if not choices:
+            raise TransitousError(
+                "Dense-origin fallback batch plan cannot cover every stop."
+            )
+
+        _, _, _, center, selected_mask = min(choices)
+        selected_members = tuple(
+            candidate
+            for index, candidate in enumerate(ordered_candidates)
+            if selected_mask & (1 << index)
+        )
+        farthest_distance = max(
+            _coordinate_distance_metres(
+                center.lat,
+                center.lon,
+                candidate.lat,
+                candidate.lon,
+            )
+            for candidate in selected_members
+        )
+        radius_metres = math.ceil(
+            farthest_distance + BATCH_RADIUS_PADDING_METRES
+        )
+        if radius_metres > MAX_FALLBACK_BATCH_RADIUS_METRES:
+            raise TransitousError(
+                "Dense-origin fallback batch radius is invalid."
+            )
+
+        batches.append(
+            CandidateBatch(
+                center=center,
+                members=selected_members,
+                radius_metres=radius_metres,
+            )
+        )
+        remaining_mask &= ~selected_mask
+
+    return tuple(batches)
+
+
+def _candidate_projection(
+    candidates: tuple[CandidateStop, ...],
+) -> tuple[float, float, float]:
+    reference_lat = sum(candidate.lat for candidate in candidates) / len(
+        candidates
+    )
+    longitude_x = sum(
+        math.cos(math.radians(candidate.lon)) for candidate in candidates
+    )
+    longitude_y = sum(
+        math.sin(math.radians(candidate.lon)) for candidate in candidates
+    )
+    if longitude_x == 0 and longitude_y == 0:
+        reference_lon = candidates[0].lon
+    else:
+        reference_lon = math.degrees(math.atan2(longitude_y, longitude_x))
+    longitude_scale = max(
+        math.cos(math.radians(reference_lat)),
+        1e-12,
+    )
+    return reference_lat, reference_lon, longitude_scale
+
+
+def _project_candidate(
+    candidate: CandidateStop,
+    projection: tuple[float, float, float],
+) -> tuple[float, float]:
+    reference_lat, reference_lon, longitude_scale = projection
+    longitude_delta = (
+        (candidate.lon - reference_lon + 180) % 360
+    ) - 180
+    return (
+        EARTH_RADIUS_METRES
+        * longitude_scale
+        * math.radians(longitude_delta),
+        EARTH_RADIUS_METRES
+        * math.radians(candidate.lat - reference_lat),
+    )
+
+
+def _unproject_batch_center(
+    x: float,
+    y: float,
+    projection: tuple[float, float, float],
+) -> CandidateBatchCenter:
+    reference_lat, reference_lon, longitude_scale = projection
+    lat = reference_lat + math.degrees(y / EARTH_RADIUS_METRES)
+    lon = reference_lon + math.degrees(
+        x / (EARTH_RADIUS_METRES * longitude_scale)
+    )
+    lon = ((lon + 180) % 360) - 180
+    return CandidateBatchCenter(lat=lat, lon=lon)
+
+
+def _pair_circle_centers(
+    first_x: float,
+    first_y: float,
+    second_x: float,
+    second_y: float,
+    radius_metres: float,
+) -> tuple[tuple[float, float], ...]:
+    x_delta = second_x - first_x
+    y_delta = second_y - first_y
+    distance = math.hypot(x_delta, y_delta)
+    if distance == 0 or distance > 2 * radius_metres:
+        return ()
+
+    midpoint_x = (first_x + second_x) / 2
+    midpoint_y = (first_y + second_y) / 2
+    offset = math.sqrt(
+        max(0.0, radius_metres**2 - (distance / 2) ** 2)
+    )
+    perpendicular_x = -y_delta / distance
+    perpendicular_y = x_delta / distance
+    return (
+        (
+            midpoint_x + perpendicular_x * offset,
+            midpoint_y + perpendicular_y * offset,
+        ),
+        (
+            midpoint_x - perpendicular_x * offset,
+            midpoint_y - perpendicular_y * offset,
+        ),
+    )
+
+
+def _remove_dominated_batch_options(
+    options_by_members: dict[
+        int,
+        tuple[tuple[float, float, float, float], CandidateBatchCenter],
+    ],
+) -> tuple[
+    tuple[
+        int,
+        tuple[float, float, float, float],
+        CandidateBatchCenter,
+    ],
+    ...,
+]:
+    ordered_options = sorted(
+        (
+            (member_mask, center_key, center)
+            for member_mask, (center_key, center) in (
+                options_by_members.items()
+            )
+        ),
+        key=lambda option: (
+            -option[0].bit_count(),
+            option[1],
+        ),
+    )
+    kept = []
+    member_count = max(
+        (
+            member_mask.bit_length()
+            for member_mask, _, _ in ordered_options
+        ),
+        default=0,
+    )
+    kept_by_member = [[] for _ in range(max(1, member_count))]
+
+    for member_mask, center_key, center in ordered_options:
+        member_indices = tuple(
+            index
+            for index in range(member_mask.bit_length())
+            if member_mask & (1 << index)
+        )
+        possible_supersets = min(
+            (kept_by_member[index] for index in member_indices),
+            key=len,
+        )
+        if any(
+            (member_mask & ~kept[option_index][0]) == 0
+            for option_index in possible_supersets
+        ):
+            continue
+
+        kept_index = len(kept)
+        kept.append((member_mask, center_key, center))
+        for index in member_indices:
+            kept_by_member[index].append(kept_index)
+
+    return tuple(kept)
 
 
 def _validate_candidate_batches(
@@ -395,13 +695,36 @@ def _validate_candidate_batches(
 
     for batch in batches:
         member_ids = {member.stop_id for member in batch.members}
+        if isinstance(batch.center, CandidateStop):
+            center_is_valid = (
+                1 <= len(batch.members) <= MAX_BATCH_CANDIDATES
+                and batch.center.stop_id in candidate_ids
+                and batch.center.stop_id in member_ids
+            )
+            maximum_radius = MAX_BATCH_RADIUS_METRES
+            maximum_member_distance = batch.radius_metres
+        elif isinstance(batch.center, CandidateBatchCenter):
+            center_is_valid = (
+                1
+                <= len(batch.members)
+                <= MAX_CANDIDATE_STOPS * MAX_BATCH_CANDIDATES
+                and _valid_coordinate(batch.center.lat, batch.center.lon)
+            )
+            maximum_radius = MAX_FALLBACK_BATCH_RADIUS_METRES
+            maximum_member_distance = min(
+                batch.radius_metres,
+                MAX_FALLBACK_MEMBER_RADIUS_METRES,
+            )
+        else:
+            center_is_valid = False
+            maximum_radius = 0
+            maximum_member_distance = 0
+
         if (
-            not 1 <= len(batch.members) <= MAX_BATCH_CANDIDATES
-            or batch.center.stop_id not in candidate_ids
-            or batch.center.stop_id not in member_ids
+            not center_is_valid
             or not BATCH_RADIUS_PADDING_METRES
             <= batch.radius_metres
-            <= MAX_BATCH_RADIUS_METRES
+            <= maximum_radius
         ):
             raise TransitousError(
                 "Dense-origin candidate batch plan is invalid."
@@ -411,7 +734,7 @@ def _validate_candidate_batches(
             if (
                 member.stop_id not in candidate_ids
                 or _candidate_distance_metres(batch.center, member)
-                > batch.radius_metres
+                > maximum_member_distance
             ):
                 raise TransitousError(
                     "Dense-origin candidate batch plan is invalid."
@@ -428,7 +751,7 @@ def _validate_candidate_batches(
 
 
 def _candidate_distance_metres(
-    first: CandidateStop,
+    first: CandidateStop | CandidateBatchCenter,
     second: CandidateStop,
 ) -> float:
     return _coordinate_distance_metres(
