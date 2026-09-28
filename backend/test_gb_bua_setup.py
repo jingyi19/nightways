@@ -291,7 +291,7 @@ class GbBuaInstallerTests(unittest.TestCase):
             self.target, opener=self._opener(self.zip_bytes)
         )
         self.assertTrue(result.installed)
-        self.assertEqual(result.path, self.target)
+        self.assertEqual(result.path.resolve(), self.target.resolve())
         self.assertEqual(result.size_bytes, len(self.gpkg))
         self.assertEqual(self.target.read_bytes(), self.gpkg)
         self.assertEqual(installer.validate_gb_bua_artifact(self.target), len(self.gpkg))
@@ -317,7 +317,7 @@ class GbBuaInstallerTests(unittest.TestCase):
             result = installer.install_gb_bua_artifact(
                 opener=self._opener(self.zip_bytes)
             )
-        self.assertEqual(result.path, path)
+        self.assertEqual(result.path.resolve(), path.resolve())
         self.assertEqual(path.read_bytes(), self.gpkg)
 
     def test_incorrect_content_length_rejected(self):
