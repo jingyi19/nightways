@@ -53,6 +53,8 @@ BATCH_RADIUS_PADDING_METRES = 25
 MAX_FALLBACK_MEMBER_RADIUS_METRES = (
     MAX_FALLBACK_BATCH_RADIUS_METRES - BATCH_RADIUS_PADDING_METRES
 )
+MAX_BATCH_REPAIR_STATES = 10_000
+MAX_BATCH_REPAIR_OPTION_EVALUATIONS = 1_000_000
 BATCH_ASSOCIATION_RADIUS_METRES = 250
 MAX_DENSE_RESPONSE_BYTES = 10 * 1024 * 1024
 MAX_DENSE_AGGREGATE_BYTES = 50 * 1024 * 1024
@@ -121,6 +123,11 @@ class CandidateBatch:
     center: CandidateStop | CandidateBatchCenter
     members: tuple[CandidateStop, ...]
     radius_metres: int
+
+
+_BatchOption = tuple[
+    int, tuple[float, float, float, float], CandidateBatchCenter
+]
 
 
 def get_nightways_for_origin(
@@ -335,9 +342,23 @@ def _plan_candidate_batches(
     if len(legacy_batches) <= request_limit:
         return legacy_batches
 
-    fallback_batches = _plan_fallback_candidate_batches(candidates)
+    ordered_candidates, options = _build_fallback_batch_options(candidates)
+    fallback_batches = _plan_fallback_candidate_batches(
+        ordered_candidates, options
+    )
     _validate_candidate_batches(candidates, fallback_batches)
     if len(fallback_batches) > request_limit:
+        selected_options = _find_bounded_batch_cover(
+            options, len(ordered_candidates), request_limit
+        )
+        if selected_options is not None:
+            repaired_batches = _batches_from_fallback_options(
+                ordered_candidates, options, selected_options
+            )
+            _validate_candidate_batches(candidates, repaired_batches)
+            return repaired_batches
+        # Keep the greedy count for compatibility; repair may have exhausted
+        # its budget, so this is not a proven minimum request count.
         raise CandidateStopLimitError(
             len(candidates),
             request_limit,
@@ -410,16 +431,16 @@ def _plan_legacy_candidate_batches(
     return tuple(batches)
 
 
-def _plan_fallback_candidate_batches(
+def _build_fallback_batch_options(
     candidates: tuple[CandidateStop, ...],
-) -> tuple[CandidateBatch, ...]:
-    """Cover a failed dense plan with deterministic, bounded spatial disks."""
+) -> tuple[tuple[CandidateStop, ...], tuple[_BatchOption, ...]]:
+    """Build the existing spherical-validated candidate/pair circle options."""
 
     ordered_candidates = tuple(
         sorted(candidates, key=lambda candidate: candidate.stop_id)
     )
     if not ordered_candidates:
-        return ()
+        return (), ()
 
     effective_radius = MAX_FALLBACK_MEMBER_RADIUS_METRES
     projection = _candidate_projection(ordered_candidates)
@@ -481,13 +502,21 @@ def _plan_fallback_candidate_batches(
         if previous is None or center_key < previous[0]:
             options_by_members[member_mask] = (center_key, center)
 
-    options = _remove_dominated_batch_options(options_by_members)
+    return ordered_candidates, _remove_dominated_batch_options(options_by_members)
+
+
+def _plan_fallback_candidate_batches(
+    ordered_candidates: tuple[CandidateStop, ...],
+    options: tuple[_BatchOption, ...],
+) -> tuple[CandidateBatch, ...]:
+    """Keep the existing largest-uncovered-first fallback and tie breaks."""
+
     remaining_mask = (1 << len(ordered_candidates)) - 1
-    batches = []
+    selected_options = []
 
     while remaining_mask:
         choices = []
-        for member_mask, center_key, center in options:
+        for option_index, (member_mask, center_key, _) in enumerate(options):
             uncovered_mask = member_mask & remaining_mask
             uncovered_count = uncovered_mask.bit_count()
             if uncovered_count:
@@ -496,8 +525,7 @@ def _plan_fallback_candidate_batches(
                         -uncovered_count,
                         center_key,
                         member_mask,
-                        center,
-                        uncovered_mask,
+                        option_index,
                     )
                 )
 
@@ -506,7 +534,29 @@ def _plan_fallback_candidate_batches(
                 "Dense-origin fallback batch plan cannot cover every stop."
             )
 
-        _, _, _, center, selected_mask = min(choices)
+        _, _, member_mask, option_index = min(choices)
+        selected_options.append(option_index)
+        remaining_mask &= ~member_mask
+
+    return _batches_from_fallback_options(
+        ordered_candidates, options, tuple(selected_options)
+    )
+
+
+def _batches_from_fallback_options(
+    ordered_candidates: tuple[CandidateStop, ...],
+    options: tuple[_BatchOption, ...],
+    selected_options: tuple[int, ...],
+) -> tuple[CandidateBatch, ...]:
+    """Assign each candidate to its first selected circle, with existing padding."""
+
+    remaining_mask = (1 << len(ordered_candidates)) - 1
+    batches = []
+    for option_index in selected_options:
+        member_mask, _, center = options[option_index]
+        selected_mask = member_mask & remaining_mask
+        if not selected_mask:
+            continue
         selected_members = tuple(
             candidate
             for index, candidate in enumerate(ordered_candidates)
@@ -539,6 +589,104 @@ def _plan_fallback_candidate_batches(
         remaining_mask &= ~selected_mask
 
     return tuple(batches)
+
+
+def _find_bounded_batch_cover(
+    options: tuple[_BatchOption, ...],
+    candidate_count: int,
+    request_limit: int,
+) -> tuple[int, ...] | None:
+    """Find a deterministic cover within the cap, improving only within budget.
+
+    Counts are cumulative across improvements. Exhaustion returns the best
+    incumbent, if any; it never establishes infeasibility or global optimality.
+    Geometry and candidate admission have already been handled by the caller.
+    """
+
+    masks = tuple(option[0] for option in options)
+    covering_options = [[] for _ in range(candidate_count)]
+    co_cover_masks = [0] * candidate_count
+    for option_index, member_mask in enumerate(masks):
+        for candidate_index in range(candidate_count):
+            if member_mask & (1 << candidate_index):
+                covering_options[candidate_index].append(option_index)
+                co_cover_masks[candidate_index] |= member_mask
+    if any(not indices for indices in covering_options):
+        return None
+
+    candidate_order = sorted(
+        range(candidate_count),
+        key=lambda index: (len(covering_options[index]), index),
+    )
+    failed = {}
+    search_states = 0
+    option_evaluations = 0
+
+    class BudgetExhausted(Exception):
+        pass
+
+    def search(remaining_mask: int, slots: int) -> tuple[int, ...] | None:
+        nonlocal search_states, option_evaluations
+        if search_states >= MAX_BATCH_REPAIR_STATES:
+            raise BudgetExhausted
+        search_states += 1
+        if not remaining_mask:
+            return ()
+        if slots == 0 or failed.get(remaining_mask, -1) >= slots:
+            return None
+
+        # These witnesses cannot share any supplied option, so each needs
+        # a separate request. Rarest-first ordering also supplies the pivot.
+        witnesses = remaining_mask
+        lower_bound = 0
+        pivot = None
+        for candidate_index in candidate_order:
+            bit = 1 << candidate_index
+            if witnesses & bit:
+                if pivot is None:
+                    pivot = candidate_index
+                lower_bound += 1
+                witnesses &= ~co_cover_masks[candidate_index]
+        if lower_bound > slots:
+            failed[remaining_mask] = max(failed.get(remaining_mask, -1), slots)
+            return None
+
+        gains = []
+        for member_mask in masks:
+            if option_evaluations >= MAX_BATCH_REPAIR_OPTION_EVALUATIONS:
+                raise BudgetExhausted
+            option_evaluations += 1
+            gains.append((member_mask & remaining_mask).bit_count())
+        if remaining_mask.bit_count() > slots * max(gains):
+            failed[remaining_mask] = max(failed.get(remaining_mask, -1), slots)
+            return None
+
+        choices = sorted(
+            covering_options[pivot],
+            key=lambda index: (-gains[index], options[index][1], masks[index]),
+        )
+        for option_index in choices:
+            suffix = search(remaining_mask & ~masks[option_index], slots - 1)
+            if suffix is not None:
+                return (option_index, *suffix)
+        # Only completely explored failures are cached. BudgetExhausted
+        # unwinds past this assignment without poisoning later searches.
+        failed[remaining_mask] = max(failed.get(remaining_mask, -1), slots)
+        return None
+
+    incumbent = None
+    remaining_mask = (1 << candidate_count) - 1
+    target = request_limit
+    try:
+        while target >= 0:
+            selected_options = search(remaining_mask, target)
+            if selected_options is None:
+                break
+            incumbent = selected_options
+            target = len(incumbent) - 1
+    except BudgetExhausted:
+        pass
+    return incumbent
 
 
 def _candidate_projection(

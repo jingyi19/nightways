@@ -1,7 +1,10 @@
 import json
+import math
+import random
 import unittest
 from datetime import date
 from io import BytesIO
+from itertools import combinations
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from unittest.mock import patch
@@ -29,9 +32,13 @@ from backend.discovery import (
     CandidateStop,
     CandidateStopLimitError,
     DenseOriginResponseLimitError,
+    _build_fallback_batch_options,
     _candidate_distance_metres,
     _dense_boarding_stop_is_eligible,
+    _find_bounded_batch_cover,
     _plan_candidate_batches,
+    _plan_fallback_candidate_batches,
+    _plan_legacy_candidate_batches,
     _request_candidate_stops,
     _request_dense_stop_departures,
     _stop_is_inside,
@@ -278,6 +285,61 @@ class CandidateStopRequestTests(unittest.TestCase):
         self.assertEqual(parameters["fetchStops"], ["true"])
         self.assertEqual(parameters["mode"], [",".join(MOTIS_MODES)])
 
+    @patch("backend.discovery._request_candidate_stops")
+    @patch("backend.discovery.urlopen")
+    def test_repaired_london_requests_use_planned_geometry(
+        self,
+        urlopen,
+        request_candidates,
+    ):
+        candidates = _london_88_candidates()
+        batches = _plan_candidate_batches(candidates)
+        request_candidates.return_value = candidates
+        urlopen.side_effect = [
+            _response({"stopTimes": []}) for _ in batches
+        ]
+
+        result = request_origin_departures(
+            _origin(), _boundary(), date(2026, 8, 14)
+        )
+
+        self.assertEqual(result, {"stopTimes": []})
+        self.assertEqual(urlopen.call_count, 24)
+        for request_call, batch in zip(urlopen.call_args_list, batches):
+            parameters = parse_qs(urlparse(request_call.args[0].full_url).query)
+            self.assertNotIn("stopId", parameters)
+            self.assertEqual(
+                parameters["center"],
+                [f"{batch.center.lat},{batch.center.lon}"],
+            )
+            self.assertEqual(parameters["radius"], [str(batch.radius_metres)])
+            self.assertEqual(parameters["exactRadius"], ["true"])
+
+    @patch("backend.discovery._request_dense_stop_departures")
+    @patch("backend.discovery._request_candidate_stops")
+    def test_repair_budget_exhaustion_stops_before_fanout(
+        self,
+        request_candidates,
+        request_dense,
+    ):
+        request_candidates.return_value = _london_88_candidates()
+        for exhausted_budget, limit in (
+            ("MAX_BATCH_REPAIR_STATES", 0),
+            ("MAX_BATCH_REPAIR_STATES", 1),
+            ("MAX_BATCH_REPAIR_OPTION_EVALUATIONS", 0),
+            ("MAX_BATCH_REPAIR_OPTION_EVALUATIONS", 1),
+        ):
+            with self.subTest(budget=exhausted_budget, limit=limit):
+                with patch(f"backend.discovery.{exhausted_budget}", limit):
+                    with self.assertRaises(CandidateStopLimitError) as error:
+                        request_origin_departures(
+                            _origin(), _boundary(), date(2026, 8, 14)
+                        )
+                self.assertEqual(error.exception.candidate_count, 88)
+                self.assertEqual(error.exception.limit, 25)
+                self.assertEqual(error.exception.required_request_count, 26)
+                request_dense.assert_not_called()
+
 
 class CandidateBatchPlanningTests(unittest.TestCase):
 
@@ -405,6 +467,148 @@ class CandidateBatchPlanningTests(unittest.TestCase):
         )
 
         self.assertEqual(forward, reversed_plan)
+
+    def test_current_london_candidates_use_bounded_repair_plan(self):
+        candidates = _london_88_candidates()
+        ordered_candidates, options = _build_fallback_batch_options(candidates)
+
+        self.assertEqual(len(candidates), 88)
+        self.assertEqual(candidates[:85], _london_candidates())
+        self.assertEqual(len(_plan_legacy_candidate_batches(candidates)), 39)
+        self.assertEqual(
+            len(_plan_fallback_candidate_batches(ordered_candidates, options)),
+            26,
+        )
+        batches = _plan_candidate_batches(candidates)
+
+        self.assertEqual(len(batches), 24)
+        original_by_id = {candidate.stop_id: candidate for candidate in candidates}
+        assigned_members = [
+            member for batch in batches for member in batch.members
+        ]
+        self.assertEqual(len(assigned_members), 88)
+        self.assertEqual(
+            {member.stop_id for member in assigned_members},
+            set(original_by_id),
+        )
+        for member in assigned_members:
+            self.assertIs(member, original_by_id[member.stop_id])
+        for batch in batches:
+            matching_options = [
+                member_mask
+                for member_mask, _, center in options
+                if center == batch.center
+            ]
+            self.assertTrue(matching_options)
+            assigned_mask = sum(
+                1 << index
+                for index, candidate in enumerate(ordered_candidates)
+                if candidate in batch.members
+            )
+            self.assertTrue(
+                any(assigned_mask & ~mask == 0 for mask in matching_options)
+            )
+            distances = [
+                _candidate_distance_metres(batch.center, member)
+                for member in batch.members
+            ]
+            self.assertLessEqual(max(distances), MAX_FALLBACK_MEMBER_RADIUS_METRES)
+            self.assertEqual(
+                batch.radius_metres,
+                math.ceil(max(distances) + BATCH_RADIUS_PADDING_METRES),
+            )
+            self.assertLessEqual(
+                batch.radius_metres, MAX_FALLBACK_BATCH_RADIUS_METRES
+            )
+        _validate_candidate_batches(candidates, batches)
+
+    def test_london_repair_plan_is_independent_of_input_order(self):
+        candidates = _london_88_candidates()
+        shuffled = list(candidates)
+        random.Random(20260929).shuffle(shuffled)
+        expected = _batch_signature(_plan_candidate_batches(candidates))
+
+        for label, reordered in (
+            ("repeat", candidates),
+            ("reversed", tuple(reversed(candidates))),
+            ("shuffled", tuple(shuffled)),
+        ):
+            with self.subTest(order=label):
+                self.assertEqual(
+                    _batch_signature(_plan_candidate_batches(reordered)),
+                    expected,
+                )
+
+    def test_successful_existing_plans_do_not_need_repair_budget(self):
+        for candidates in (_paris_shaped_candidates(), _london_candidates()):
+            with self.subTest(candidate_count=len(candidates)):
+                expected = _batch_signature(_plan_candidate_batches(candidates))
+                with (
+                    patch("backend.discovery.MAX_BATCH_REPAIR_STATES", 0),
+                    patch("backend.discovery.MAX_BATCH_REPAIR_OPTION_EVALUATIONS", 0),
+                ):
+                    self.assertEqual(
+                        _batch_signature(_plan_candidate_batches(candidates)),
+                        expected,
+                    )
+
+    def test_bounded_repair_escapes_greedy_set_cover_trap(self):
+        # Largest first covers four, but then needs both remaining options.
+        # The two smaller options cover all six candidates together.
+        options = _batch_options_for_masks((0b001111, 0b010011, 0b101100))
+
+        cover = _find_bounded_batch_cover(options, 6, 2)
+
+        self.assertIsNotNone(cover)
+        self.assertEqual(set(cover), {1, 2})
+        self.assertIsNone(_find_bounded_batch_cover(options, 6, 1))
+
+    def test_bounded_repair_matches_small_exhaustive_cover_oracle(self):
+        possible_masks = (0b0001, 0b0010, 0b0101, 0b1010, 0b0110, 0b1100)
+        for family_mask in range(1 << len(possible_masks)):
+            masks = tuple(
+                mask
+                for index, mask in enumerate(possible_masks)
+                if family_mask & (1 << index)
+            )
+            options = _batch_options_for_masks(masks)
+            minimum_count = None
+            for count in range(1, len(masks) + 1):
+                if any(
+                    _combined_mask(selected_masks) == 0b1111
+                    for selected_masks in combinations(masks, count)
+                ):
+                    minimum_count = count
+                    break
+            for request_limit in range(1, 5):
+                with self.subTest(masks=masks, request_limit=request_limit):
+                    cover = _find_bounded_batch_cover(options, 4, request_limit)
+                    feasible = (
+                        minimum_count is not None
+                        and minimum_count <= request_limit
+                    )
+                    self.assertEqual(cover is not None, feasible)
+                    if cover is not None:
+                        self.assertEqual(len(cover), len(set(cover)))
+                        self.assertLessEqual(len(cover), request_limit)
+                        self.assertEqual(
+                            _combined_mask(options[index][0] for index in cover),
+                            0b1111,
+                        )
+
+    def test_repair_keeps_feasible_cover_when_improvement_budget_exhausts(self):
+        candidates = _london_88_candidates()
+        # Each budget permits the first 25-circle incumbent but stops the
+        # improvement to 24. The caller must still return a usable full plan.
+        for budget, limit in (
+            ("MAX_BATCH_REPAIR_STATES", 26),
+            ("MAX_BATCH_REPAIR_OPTION_EVALUATIONS", 1825),
+        ):
+            with self.subTest(budget=budget):
+                with patch(f"backend.discovery.{budget}", limit):
+                    batches = _plan_candidate_batches(candidates)
+                self.assertEqual(len(batches), 25)
+                _validate_candidate_batches(candidates, batches)
 
     def test_fallback_retains_same_name_parent_and_coach_candidates(self):
         candidates = tuple(
@@ -1107,6 +1311,56 @@ def _london_candidates():
         _candidate(stop_id, lat, lon, parent_id, modes=modes)
         for stop_id, lat, lon, modes, parent_id in rows
     )
+
+
+def _london_88_candidates():
+    # Three additions from the controlled capture; the frozen 85 stay unchanged.
+    return (
+        *_london_candidates(),
+        CandidateStop(
+            stop_id="gb-great-britain_490G00001550",
+            name="Park Lane / Fairfield Halls",
+            lat=51.37272263,
+            lon=-0.09635580,
+            modes=("COACH", "BUS"),
+            parent_id=None,
+        ),
+        CandidateStop(
+            stop_id="gb-great-britain_490G000101",
+            name="Rose Theatre",
+            lat=51.40824509,
+            lon=-0.30740061,
+            modes=("COACH", "BUS"),
+            parent_id=None,
+        ),
+        CandidateStop(
+            stop_id="gb-great-britain_490G01286Z",
+            name="Sutton Station",
+            lat=51.35897446,
+            lon=-0.19071969,
+            modes=("COACH", "BUS"),
+            parent_id=None,
+        ),
+    )
+
+
+def _batch_options_for_masks(masks):
+    # These tests exercise the cover search independently of circle generation.
+    return tuple(
+        (
+            mask,
+            (float(index), 0.0, float(index), 0.0),
+            CandidateBatchCenter(lat=0.0, lon=float(index)),
+        )
+        for index, mask in enumerate(masks)
+    )
+
+
+def _combined_mask(masks):
+    result = 0
+    for mask in masks:
+        result |= mask
+    return result
 
 
 def _dense_candidates():
